@@ -1,0 +1,270 @@
+"""
+Debug Agent 入口
+支持多种 LLM 提供商 (Minimax, DeepSeek, Kimi, GLM, Anthropic)
+"""
+
+import os
+import sys
+import json
+import re
+import requests
+
+# 添加当前目录到路径
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from agent import DebugAgent
+
+
+# 获取当前项目目录
+PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+class LLMClient:
+    """通用 LLM 客户端 (Anthropic 兼容模式)"""
+    
+    def __init__(self, api_key: str, model: str = "MiniMax-M2.5", base_url: str = "https://api.minimax.io/anthropic"):
+        self.api_key = api_key
+        self.model = model
+        self.base_url = base_url
+    
+    def chat(self, context: dict) -> dict:
+        """调用 LLM API (Anthropic 兼容格式)"""
+        messages = [
+            {"role": "user", "content": self._build_user_message(context)}
+        ]
+        
+        # 添加 system prompt
+        system_prompt = context.get("system", "")
+        
+        headers = {
+            "x-api-key": self.api_key,
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01"
+        }
+        
+        data = {
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": 1024,
+            "temperature": 0.7,
+            "system": system_prompt
+        }
+        
+        response = requests.post(
+            f"{self.base_url}/v1/messages",
+            headers=headers,
+            json=data,
+            timeout=60
+        )
+        
+        if response.status_code != 200:
+            return {"action": None, "error": f"API error: {response.status_code} - {response.text[:500]}", "raw": response.text}
+        
+        result = response.json()
+        
+        # 遍历所有 content blocks
+        json_content = ""
+        thinking_content = ""
+        
+        if "content" in result:
+            for block in result["content"]:
+                if block.get("type") == "text":
+                    json_content = block.get("text", "")
+                elif block.get("type") == "thinking":
+                    thinking_content = block.get("thinking", "")
+        
+        # 打印 thinking（调试用）
+        if thinking_content:
+            print(f"\n=== LLM Thinking ===\n{thinking_content[:300]}...\n=====================\n")
+        
+        # 解析响应
+        parsed = self._parse_response(json_content)
+        
+        if parsed:
+            parsed["raw"] = json_content
+            return parsed
+        
+        return {"action": None, "error": f"Failed to parse: {json_content[:200]}", "raw": json_content}
+    
+    def _parse_response(self, content: str) -> dict:
+        """解析 LLM 响应 - 支持多种格式"""
+        content = content.strip()
+        
+        result = {
+            "thought": "",
+            "action": {},
+            "done": False,
+            "summary": ""
+        }
+        
+        # 提取 thought
+        thought_match = re.search(r'thought:\s*(.+?)(?=\naction:|$)', content, re.DOTALL)
+        if thought_match:
+            result["thought"] = thought_match.group(1).strip()
+        
+        # 提取 action
+        action_match = re.search(r'action:\s*(.+?)(?=\ndone:|$)', content, re.DOTALL)
+        if action_match:
+            action_str = action_match.group(1).strip()
+            if action_str:
+                func_match = re.match(r'(\w+)\((.*)\)', action_str)
+                if func_match:
+                    tool_name = func_match.group(1)
+                    args_str = func_match.group(2)
+                    args = self._parse_args(args_str)
+                    result["action"] = {"tool": tool_name, "args": args}
+        
+        # 提取 done
+        done_match = re.search(r'done:\s*(true|false)', content, re.IGNORECASE)
+        if done_match:
+            result["done"] = done_match.group(1).lower() == "true"
+        
+        # 提取 summary
+        summary_match = re.search(r'summary:\s*(.+?)$', content, re.DOTALL)
+        if summary_match:
+            result["summary"] = summary_match.group(1).strip()
+        
+        if not result["thought"] and not result["action"]:
+            return None
+        
+        return result
+    
+    def _parse_args(self, args_str: str) -> dict:
+        """解析工具参数 - 支持多种格式"""
+        args = {}
+        
+        # 数字参数: key=123
+        for match in re.finditer(r'(\w+)=(\d+)', args_str):
+            args[match.group(1)] = int(match.group(2))
+        
+        # 双引号字符串: key="value"
+        for match in re.finditer(r'(\w+)="((?:[^"\\]|\\.)*)"', args_str):
+            key = match.group(1)
+            value = match.group(2).replace('\\"', '"').replace('\\\\', '\\')
+            args[key] = value
+        
+        # 单引号字符串: key='value'
+        for match in re.finditer(r'(\w+)=\'((?:[^\'\\]|\\.)*)\'', args_str):
+            key = match.group(1)
+            value = match.group(2).replace("\\'", "'").replace('\\\\', '\\')
+            args[key] = value
+        
+        return args
+    
+    def _build_user_message(self, context: dict) -> str:
+        """构建用户消息"""
+        parts = []
+        
+        # Bug 报告
+        parts.append(f"## Bug Report\n{context['bug_report']}")
+        
+        # 历史记录
+        if context["history"]:
+            parts.append("\n## History (你之前做了什么)")
+            for h in context["history"]:
+                action = h.get("action", {})
+                result = h.get("result", {})
+                thought = h.get("thought", "")
+                iteration = h.get("iteration", "?")
+                
+                tool_name = action.get("tool", "unknown")
+                args = action.get("args", {})
+                
+                parts.append(f"\n### 第 {iteration} 轮")
+                parts.append(f" Thought: {thought}")
+                
+                if tool_name and tool_name != "unknown":
+                    args_parts = []
+                    for k, v in args.items():
+                        if k == "new_string" and len(str(v)) > 50:
+                            args_parts.append(f'{k}="[内容截断]"')
+                        else:
+                            args_parts.append(f'{k}="{v}"' if isinstance(v, str) else f'{k}={v}')
+                    args_str = ", ".join(args_parts)
+                    parts.append(f" Action: {tool_name}({args_str})")
+                
+                # 结果摘要
+                if tool_name == "read_file" and result.get("success"):
+                    parts.append(f" Result: 文件内容已读取")
+                elif tool_name == "exec" and result.get("success"):
+                    stdout = result.get("stdout", "").strip()
+                    if len(stdout) > 100:
+                        stdout = stdout[:100] + "..."
+                    parts.append(f" Result: {stdout}")
+                elif tool_name == "edit_file" and result.get("success"):
+                    parts.append(f" Result: 文件已修改")
+                elif not result.get("success"):
+                    parts.append(f" Result: 失败 - {result.get('error', result.get('stderr', 'unknown'))}")
+                else:
+                    parts.append(f" Result: success")
+            
+            parts.append("\n## 重要提示")
+            parts.append("你已经在历史记录中看到了代码内容，请分析它并决定下一步该做什么！")
+            parts.append("不要再次读取文件，除非你需要查看其他文件。")
+            parts.append("绝对不要修改已经修复好的代码！")
+        
+        return "\n".join(parts)
+
+
+def load_config():
+    """从 .env 文件加载配置"""
+    env_path = os.path.join(PROJECT_DIR, ".env")
+    
+    config = {
+        "api_key": None,
+        "model": "MiniMax-M2.5",
+        "base_url": "https://api.minimax.io/anthropic"
+    }
+    
+    if os.path.exists(env_path):
+        with open(env_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith("ANTHROPIC_API_KEY="):
+                    config["api_key"] = line.split("=", 1)[1].strip()
+                elif line.startswith("ANTHROPIC_BASE_URL="):
+                    config["base_url"] = line.split("=", 1)[1].strip()
+                elif line.startswith("MODEL_ID="):
+                    config["model"] = line.split("=", 1)[1].strip()
+    
+    return config
+
+
+def main():
+    # 获取 bug 描述
+    bug_report = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("DEBUG_BUG_REPORT", "")
+    
+    if not bug_report:
+        print("Usage: python main.py \"Your bug description\"")
+        print("Or set DEBUG_BUG_REPORT environment variable")
+        return
+    
+    # 加载配置
+    config = load_config()
+    
+    if not config["api_key"]:
+        print("Error: ANTHROPIC_API_KEY not found in .env")
+        print(f"Please create .env file in {PROJECT_DIR}")
+        print("See .env.example for reference")
+        return
+    
+    print(f"Config: model={config['model']}, base_url={config['base_url']}")
+    
+    # 创建客户端和 agent
+    llm_client = LLMClient(
+        config["api_key"], 
+        config["model"], 
+        config["base_url"]
+    )
+    agent = DebugAgent(llm_client)
+    
+    # 运行
+    print(f"Starting Debug Agent ({config['model']})...")
+    print(f"Bug: {bug_report}\n")
+    
+    result = agent.run(bug_report)
+    print(f"\n=== Final Result ===\n{result}")
+
+
+if __name__ == "__main__":
+    main()
