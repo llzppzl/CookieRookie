@@ -145,6 +145,6 @@ class DebugAgent:
         }
 
 
-def create_agent(llm_client, max_iterations: int = 10) -> DebugAgent:
+def create_agent(llm_client, max_iterations: int = 50) -> DebugAgent:
     """创建 Debug Agent"""
     return DebugAgent(llm_client, max_iterations)
