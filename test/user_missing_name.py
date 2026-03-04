@@ -1,7 +1,4 @@
-class User:
-    def __init__(self, name: str):
-        self.name = name
-
+from user import User
 
 def entrypoint():
     """测试入口：故意少传 name 参数以制造 bug。"""
