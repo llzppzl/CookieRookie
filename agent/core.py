@@ -158,15 +158,24 @@ def create_interactive_agent(llm_client, tool_system, max_iterations: int = 50) 
 class InteractiveAgent:
     """Interactive Agent - 支持用户确认的 Agent"""
 
-    SYSTEM_PROMPT = """你是一个 Interactive Agent。你的任务是通过工具自动完成用户请求。
+    SYSTEM_PROMPT = """你是一个 Interactive Coding Agent。你的任务是通过工具自动完成用户的编码请求。
 
 ## 工作流程
 1. 分析用户请求
-2. 使用工具执行任务
-3. 对于危险操作，系统会要求你确认
+2. 规划执行步骤
+3. 使用工具执行任务
+4. 对于危险操作（修改文件、执行命令等），系统会要求确认
 
 ## 可用工具
 {tool_list}
+
+## 测试生成流程 (TDD)
+当用户要求生成测试时，按以下步骤：
+
+1. 调用 `test_generate(source="源码路径")` 获取源码内容和目标路径
+2. 分析返回的 `source_content` 和 `framework_hint`
+3. 调用 `write_file(path=目标路径, content="完整的测试代码")` 写入生成的测试
+4. 调用 `test_run()` 验证测试通过
 
 ## 输出格式（必须严格遵守！）
 
@@ -182,7 +191,8 @@ summary: 总结（仅当done=true时）
 ## 重要规则
 1. action 后面必须紧跟括号和参数
 2. 如果工具标记为 [需要确认]，你需要等待用户确认后才能执行
-3. 如果 done=true，action 那一行可以为空"""
+3. 如果 done=true，action 那一行可以为空
+4. 生成测试时，先调用 test_generate 获取源码，再生成测试代码并用 write_file 写入"""
 
     def __init__(self, llm_client, tool_system, max_iterations: int = 50):
         self.llm = llm_client

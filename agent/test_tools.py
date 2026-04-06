@@ -175,7 +175,9 @@ def _test_run(path: str = None, pattern: str = "test_*.py", framework: str = "au
 
 
 def _test_generate(source: str, target: str = None, framework: str = "pytest") -> dict:
-    """生成测试框架代码 (内部实现)
+    """分析源码并准备生成测试 (内部实现)
+
+    读取源码内容，返回给 LLM 生成测试用例。
 
     Args:
         source: 源代码文件路径
@@ -185,8 +187,10 @@ def _test_generate(source: str, target: str = None, framework: str = "pytest") -
     Returns:
         success: 是否成功
         source: 源代码路径
+        source_content: 源码内容 (供 LLM 生成测试用)
         target: 目标测试路径
         framework: 使用的框架
+        suggested_imports: 建议的 import 语句
         message: 提示信息
     """
     if not os.path.exists(source):
@@ -194,88 +198,112 @@ def _test_generate(source: str, target: str = None, framework: str = "pytest") -
             "success": False,
             "error": f"Source file not found: {source}",
             "source": source,
+            "source_content": None,
             "target": target,
-            "framework": framework
+            "framework": framework,
+            "suggested_imports": []
+        }
+
+    # 读取源码内容
+    try:
+        with open(source, "r", encoding="utf-8") as f:
+            source_content = f.read()
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Failed to read source: {e}",
+            "source": source,
+            "source_content": None,
+            "target": target,
+            "framework": framework,
+            "suggested_imports": []
         }
 
     # 推导 target 路径
     if target is None:
-        # src/calculator.py -> tests/test_calculator.py
-        dirname = os.path.dirname(source)
         basename = os.path.basename(source)
         name_without_ext = os.path.splitext(basename)[0]
+        dirname = os.path.dirname(source)
 
-        # 构建 tests 目录路径 (在 source 同级)
+        # 构建 tests 目录路径
         if dirname:
-            tests_dir = os.path.join(dirname.replace("/src/", "/tests/").replace("\\src\\", "\\tests\\"), "tests")
+            tests_dir = os.path.join(
+                dirname.replace("/src/", "/tests/").replace("\\src\\", "\\tests\\"),
+                "tests"
+            )
         else:
             tests_dir = "tests"
 
-        # 确保 tests 目录存在
         os.makedirs(tests_dir, exist_ok=True)
-
         target = os.path.join(tests_dir, f"test_{name_without_ext}.py")
 
-    # 生成测试框架占位内容
+    # 分析源码，提取建议的 import
+    suggested_imports = _extract_imports(source_content)
+
+    # 生成框架提示
     basename = os.path.basename(source)
     name_without_ext = os.path.splitext(basename)[0]
 
     if framework == "pytest":
-        template = f'''"""Test for {name_without_ext}"""
-import pytest
-
-
-# TODO: Implement test cases with LLM assistance
-class Test{name_without_ext.title().replace("_", "")}:
-    """Test suite for {name_without_ext}"""
-
-    @pytest.fixture
-    def instance(self):
-        """Create instance for testing"""
-        # TODO: Import and create instance
-        pass
-
-    def test_placeholder(self):
-        """Placeholder test - implement with LLM"""
-        pass
+        fixture_hint = f'''
+# pytest 建议 fixture:
+@pytest.fixture
+def {name_without_ext}_instance():
+    from {name_without_ext} import ...
+    return ...
 '''
     elif framework == "unittest":
-        template = f'''"""Test for {name_without_ext}"""
-import unittest
-
-
-# TODO: Implement test cases with LLM assistance
-class Test{name_without_ext.title().replace("_", "")}(unittest.TestCase):
-    """Test suite for {name_without_ext}"""
-
-    @classmethod
-    def setUpClass(cls):
-        """Set up test class"""
-        pass
-
-    def test_placeholder(self):
-        """Placeholder test - implement with LLM"""
-        pass
+        fixture_hint = '''
+# unittest 建议 setUp:
+def setUp(self):
+    from ... import ...
+    self.instance = ...
 '''
     else:
-        return {
-            "success": False,
-            "error": f"Unsupported framework: {framework}",
-            "source": source,
-            "target": target,
-            "framework": framework
-        }
+        fixture_hint = ""
 
-    # 写入测试文件
-    result = write_file(target, template)
+    imports_section = "\n".join(suggested_imports) if suggested_imports else "# (no imports found)"
+
+    framework_hint = f"""
+## {framework.upper()} 测试框架
+
+### 源码文件: {source}
+### 要生成的测试文件: {target}
+
+### 源码中的 import:
+{imports_section}
+
+{fixture_hint}
+
+### 任务:
+请根据上面的源码内容，生成完整的测试用例。
+测试应该:
+1. 覆盖主要功能
+2. 包含边界条件测试
+3. 使用 assert 明确验证预期结果
+4. 生成可运行的测试代码
+"""
 
     return {
-        "success": result.get("success", False),
+        "success": True,
         "source": source,
+        "source_content": source_content,
         "target": target,
         "framework": framework,
-        "message": f"Test generated at {target}. Fill in test cases with LLM assistance."
+        "suggested_imports": suggested_imports,
+        "framework_hint": framework_hint,
+        "message": f"Source analyzed. Target: {target}. Generate tests based on the source content above."
     }
+
+
+def _extract_imports(source_content: str) -> list:
+    """从源码中提取 import 语句"""
+    imports = []
+    for line in source_content.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("import ") or stripped.startswith("from "):
+            imports.append(stripped)
+    return imports[:10]  # 最多 10 个
 
 
 # Public API - wrapper functions for external use
@@ -301,18 +329,24 @@ def test_run(path: str = None, pattern: str = "test_*.py", framework: str = "aut
 
 
 def test_generate(source: str, target: str = None, framework: str = "pytest") -> dict:
-    """生成测试框架代码
+    """分析源码，准备生成测试
+
+    返回源码内容供 LLM 生成测试用例。
+    实际测试代码需要通过 LLM 生成后用 write_file 写入。
 
     Args:
         source: 源代码文件路径
-        target: 目标测试文件路径 (默认推导: src/calculator.py -> tests/test_calculator.py)
+        target: 目标测试文件路径 (默认推导)
         framework: 测试框架 (默认 pytest)
 
     Returns:
         success: 是否成功
         source: 源代码路径
+        source_content: 源码内容 (供 LLM 生成测试用)
         target: 目标测试路径
         framework: 使用的框架
+        suggested_imports: 建议的 import 语句
+        framework_hint: 框架特定的提示
         message: 提示信息
     """
     return _test_generate(source=source, target=target, framework=framework)

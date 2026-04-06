@@ -10,6 +10,11 @@ import fnmatch
 from typing import Dict, Callable, List
 from .tool_system import tool_system
 
+# 延迟导入避免循环依赖
+def _get_test_tools():
+    from . import test_tools
+    return test_tools
+
 
 # ========== 工具实现 ==========
 
@@ -260,6 +265,13 @@ def register_base_tools() -> None:
     tool_system.register("exec", exec, confirmable=True)
     tool_system.register("search_files", search_files, confirmable=False)
     tool_system.register("find_files", find_files, confirmable=False)
+
+    # 测试工具
+    tt = _get_test_tools()
+    tool_system.register("test_run", tt.test_run, confirmable=False,
+                        description="执行测试 (path, pattern, framework)")
+    tool_system.register("test_generate", tt.test_generate, confirmable=False,
+                        description="分析源码，准备生成测试")
 
 
 def register_tools() -> Dict[str, Callable]:
