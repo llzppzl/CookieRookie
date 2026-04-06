@@ -8,6 +8,7 @@ import subprocess
 import glob
 import fnmatch
 from typing import Dict, Callable, List
+from .tool_system import tool_system
 
 
 # ========== 工具实现 ==========
@@ -186,9 +187,28 @@ def search_files(pattern: str, path: str = ".", file_glob: str = "*.py", use_reg
         return {"success": False, "error": str(e)}
 
 
+def write_file(path: str, content: str) -> dict:
+    """写入文件内容
+
+    Args:
+        path: 文件路径
+        content: 文件内容
+    """
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return {
+            "success": True,
+            "message": f"File written: {path}",
+            "path": path
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
 def find_files(pattern: str, path: str = ".", use_regex: bool = False) -> dict:
     """查找文件
-    
+
     Args:
         pattern: 文件名匹配模式
         path: 搜索路径
@@ -232,11 +252,23 @@ def find_files(pattern: str, path: str = ".", use_regex: bool = False) -> dict:
 
 # ========== 工具注册 ==========
 
+def register_base_tools() -> None:
+    """注册基础工具到 ToolSystem"""
+    tool_system.register("read_file", read_file, confirmable=False)
+    tool_system.register("edit_file", edit_file, confirmable=True)
+    tool_system.register("write_file", write_file, confirmable=True)
+    tool_system.register("exec", exec, confirmable=True)
+    tool_system.register("search_files", search_files, confirmable=False)
+    tool_system.register("find_files", find_files, confirmable=False)
+
+
 def register_tools() -> Dict[str, Callable]:
     """注册所有可用工具"""
+    register_base_tools()
     return {
         "read_file": read_file,
         "edit_file": edit_file,
+        "write_file": write_file,
         "exec": exec,
         "search_files": search_files,
         "find_files": find_files,
