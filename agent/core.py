@@ -192,7 +192,40 @@ summary: 总结（仅当done=true时）
 1. action 后面必须紧跟括号和参数
 2. 如果工具标记为 [需要确认]，你需要等待用户确认后才能执行
 3. 如果 done=true，action 那一行可以为空
-4. 生成测试时，先调用 test_generate 获取源码，再生成测试代码并用 write_file 写入"""
+4. 生成测试时，先调用 test_generate 获取源码，再生成测试代码并用 write_file 写入
+
+## 规划模式
+
+当用户输入复杂任务时，先规划再执行：
+
+1. 分析任务需要的步骤
+2. 使用 plan(task) 生成执行计划
+3. 展示计划给用户确认
+4. 用户确认后使用 execute_plan(plan) 执行
+
+## Plan 输出格式
+
+规划时返回：
+```
+plan: true
+summary: 任务总结（一句话）
+steps:
+  1. [tool_name] 步骤描述
+  2. [tool_name] 步骤描述
+  ...
+```
+
+## 执行格式
+
+执行时返回：
+```
+thought: 你的推理过程
+action: 工具名(参数)
+done: true/false
+summary: 总结
+```
+
+    """
 
     def __init__(self, llm_client, tool_system, max_iterations: int = 50, project_path: str = None):
         self.llm = llm_client
@@ -394,6 +427,96 @@ summary: 总结（仅当done=true时）
 
         self.pending_action = None
         return self.run_from_context(context)
+
+    def _format_plan(self, plan: dict) -> str:
+        """格式化 Plan 为可读文本
+
+        Args:
+            plan: 包含 steps 和 summary 的字典
+
+        Returns:
+            格式化的计划文本
+        """
+        lines = ["## 执行计划", ""]
+
+        summary = plan.get("summary", "")
+        if summary:
+            lines.append(f"任务: {summary}")
+            lines.append("")
+
+        steps = plan.get("steps", [])
+        if not steps:
+            lines.append("(无步骤)")
+            return "\n".join(lines)
+
+        for step in steps:
+            step_num = step.get("step", "?")
+            tool = step.get("tool", "?")
+            desc = step.get("description", "")
+            confirmable = step.get("confirmable", False)
+
+            line = f"{step_num}. [{tool}] {desc}"
+            if confirmable:
+                line += " ✅ 需要确认"
+
+            lines.append(line)
+
+        lines.append("")
+        lines.append("确认执行？ (/confirm /reject /skip N)")
+
+        return "\n".join(lines)
+
+    def plan(self, task: str) -> dict:
+        """让 LLM 生成任务的执行计划
+
+        Args:
+            task: 用户任务描述
+
+        Returns:
+            Plan 字典，包含 steps 和 summary
+        """
+        context = {
+            "task": f"请为以下任务制定执行计划：{task}",
+            "system": self._build_system_prompt(),
+            "history": [],
+            "mode": "planning"
+        }
+
+        response = self.llm.chat(context)
+        plan_text = response.get("raw", "")
+        plan = self._parse_plan_response(plan_text)
+
+        return plan
+
+    def _parse_plan_response(self, response: str) -> dict:
+        """解析 LLM 的 Plan 响应"""
+        result = {
+            "summary": "",
+            "steps": []
+        }
+
+        # 解析 summary
+        summary_match = re.search(r'summary:\s*(.+?)(?=\nsteps:|$)', response, re.DOTALL)
+        if summary_match:
+            result["summary"] = summary_match.group(1).strip()
+
+        # 解析 steps
+        step_pattern = re.compile(r'^\s*(\d+)\.\s*\[(\w+)\]\s*(.+?)$', re.MULTILINE)
+        for match in step_pattern.finditer(response):
+            step_num = int(match.group(1))
+            tool_name = match.group(2)
+            description = match.group(3).strip()
+
+            confirmable = self.tool_system.is_confirmable(tool_name)
+
+            result["steps"].append({
+                "step": step_num,
+                "tool": tool_name,
+                "description": description,
+                "confirmable": confirmable
+            })
+
+        return result
 
     def _show_pending_action(self):
         """打印待确认的 action 供用户决策"""
