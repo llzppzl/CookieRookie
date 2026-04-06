@@ -34,11 +34,11 @@ class TestIntegration:
         assert tool_system.is_confirmable("find_files") is False
 
     def test_interactive_agent_with_mock_llm(self):
-        """测试 InteractiveAgent 与 mock LLM"""
+        """测试 InteractiveAgent 与 mock LLM - 使用 confirmable=True 的工具"""
         mock_llm = MagicMock()
         mock_llm.chat.return_value = {
             "thought": "test",
-            "action": {"tool": "read_file", "args": {"path": "main.py"}},
+            "action": {"tool": "edit_file", "args": {"path": "main.py", "line": 10, "new_string": "hello"}},
             "done": False
         }
 
@@ -46,7 +46,8 @@ class TestIntegration:
         tools_module.register_base_tools()
 
         agent = InteractiveAgent(mock_llm, tool_system, max_iterations=1)
-        result = agent.run("read main.py")
+        result = agent.run("edit main.py")
 
         assert result == "awaiting_confirmation"
         assert agent.pending_action is not None
+        assert agent.pending_action["action"]["tool"] == "edit_file"
