@@ -450,6 +450,29 @@ def interactive_main():
                     print(f"Tool: {agent.pending_action['action']['tool']}")
                 continue
 
+            if user_input in ["/help", "/h", "help"]:
+                print("""
+CookieRookie Coding Agent - 可用命令
+
+任务输入:
+  直接输入任务描述，Agent 会自动执行
+
+交互命令:
+  /confirm          确认执行当前待确认的操作
+  /reject           拒绝当前待确认的操作，让 Agent 重新规划
+  /edit key=value   修改待确认操作的参数后执行
+  /status           查看当前待确认操作的状态
+
+退出:
+  exit, quit        退出交互模式
+
+示例:
+  > 帮我写一个计算器模块
+  > 为 src/calculator.py 生成测试
+  > 修复登录功能的 bug
+""")
+                continue
+
             # 普通任务
             result = agent.run(user_input)
 
