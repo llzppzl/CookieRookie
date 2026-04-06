@@ -150,6 +150,11 @@ def create_agent(llm_client, max_iterations: int = 50) -> DebugAgent:
     return DebugAgent(llm_client, max_iterations)
 
 
+def create_interactive_agent(llm_client, tool_system, max_iterations: int = 50) -> 'InteractiveAgent':
+    """创建 Interactive Agent"""
+    return InteractiveAgent(llm_client, tool_system, max_iterations)
+
+
 class InteractiveAgent:
     """Interactive Agent - 支持用户确认的 Agent"""
 

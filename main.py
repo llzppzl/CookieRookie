@@ -13,6 +13,7 @@ import requests
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from agent import DebugAgent
+from agent.core import create_interactive_agent
 
 
 # 获取当前项目目录
@@ -379,5 +380,95 @@ def main():
     print(f"\n=== Final Result ===\n{result}")
 
 
+def interactive_main():
+    """交互模式入口"""
+    config = load_config()
+
+    if not config["api_key"]:
+        print("Error: ANTHROPIC_API_KEY not found in .env")
+        return
+
+    print(f"CookieRookie Coding Agent ({config['model']})")
+    print("Type 'exit' to quit, 'help' for commands\n")
+
+    # 初始化组件
+    from agent.tool_system import tool_system
+    from agent import tools as tools_module
+    tools_module.register_base_tools()
+
+    from agent.core import create_interactive_agent
+
+    llm_client = LLMClient(
+        config["api_key"],
+        config["model"],
+        config["base_url"]
+    )
+    agent = create_interactive_agent(llm_client, tool_system)
+
+    while True:
+        try:
+            user_input = input("> ").strip()
+
+            if not user_input:
+                continue
+
+            if user_input.lower() in ["exit", "quit"]:
+                break
+
+            if user_input == "/confirm":
+                if agent.pending_action:
+                    result = agent.confirm()
+                    print(f"\n{result}\n")
+                else:
+                    print("No pending action")
+                continue
+
+            if user_input.startswith("/reject"):
+                parts = user_input.split(" ", 1)
+                instructions = parts[1] if len(parts) > 1 else None
+                result = agent.reject(instructions)
+                print(f"\n{result}\n")
+                continue
+
+            if user_input.startswith("/edit"):
+                parts = user_input[5:].strip()
+                modifications = {}
+                for part in parts.split():
+                    if "=" in part:
+                        k, v = part.split("=", 1)
+                        modifications[k] = v
+                if modifications and agent.pending_action:
+                    result = agent.edit_and_confirm(modifications)
+                    print(f"\n{result}\n")
+                else:
+                    print("Invalid /edit usage or no pending action")
+                continue
+
+            if user_input == "/status":
+                print(f"Pending action: {agent.pending_action is not None}")
+                if agent.pending_action:
+                    print(f"Tool: {agent.pending_action['action']['tool']}")
+                continue
+
+            # 普通任务
+            result = agent.run(user_input)
+
+            if result == "awaiting_confirmation":
+                # 等待用户在下一轮确认
+                pass
+            else:
+                print(f"\n{result}\n")
+
+        except KeyboardInterrupt:
+            print("\nInterrupted")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+
+
 if __name__ == "__main__":
-    main()
+    import sys
+    if len(sys.argv) > 1 and sys.argv[1] == "--interactive":
+        interactive_main()
+    else:
+        main()
