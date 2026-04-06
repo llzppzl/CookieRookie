@@ -404,6 +404,7 @@ def interactive_main():
         config["base_url"]
     )
     agent = create_interactive_agent(llm_client, tool_system)
+    agent.current_plan = None
 
     while True:
         try:
@@ -450,6 +451,28 @@ def interactive_main():
                     print(f"Tool: {agent.pending_action['action']['tool']}")
                 continue
 
+            if user_input == "/plan":
+                if hasattr(agent, 'current_plan') and agent.current_plan:
+                    formatted = agent._format_plan(agent.current_plan)
+                    print(f"\n{formatted}\n")
+                else:
+                    print("No plan available. Enter a task first.")
+                continue
+
+            if user_input.startswith("/skip"):
+                parts = user_input.split()
+                if len(parts) > 1:
+                    try:
+                        step_num = int(parts[1])
+                        if hasattr(agent, 'skip_step'):
+                            result = agent.skip_step(step_num)
+                            print(f"\n{result}\n")
+                        else:
+                            print("Skip not supported")
+                    except ValueError:
+                        print("Invalid step number")
+                continue
+
             if user_input in ["/help", "/h", "help"]:
                 print("""
 CookieRookie Coding Agent - 可用命令
@@ -462,6 +485,8 @@ CookieRookie Coding Agent - 可用命令
   /reject           拒绝当前待确认的操作，让 Agent 重新规划
   /edit key=value   修改待确认操作的参数后执行
   /status           查看当前待确认操作的状态
+  /plan             查看当前计划
+  /skip <step>      跳过指定步骤
 
 退出:
   exit, quit        退出交互模式
