@@ -194,12 +194,24 @@ summary: 总结（仅当done=true时）
 3. 如果 done=true，action 那一行可以为空
 4. 生成测试时，先调用 test_generate 获取源码，再生成测试代码并用 write_file 写入"""
 
-    def __init__(self, llm_client, tool_system, max_iterations: int = 50):
+    def __init__(self, llm_client, tool_system, max_iterations: int = 50, project_path: str = None):
         self.llm = llm_client
         self.tool_system = tool_system
         self.max_iterations = max_iterations
         self.pending_action = None
         self.user_modifications = None
+        self.project_path = project_path
+
+        # 初始化记忆
+        if project_path:
+            from .memory import ProjectMemory
+            from .explorer import auto_detect_structure
+
+            self.memory = ProjectMemory(project_path)
+            structure = auto_detect_structure(project_path)
+            self.memory.update_structure(structure)
+        else:
+            self.memory = None
 
     def _build_tool_list(self) -> str:
         """构建工具列表字符串"""
@@ -290,12 +302,18 @@ summary: 总结（仅当done=true时）
         return "Max iterations reached"
 
     def _build_initial_context(self, task: str) -> dict:
-        """构建初始上下文"""
-        return {
+        context = {
             "task": task,
             "history": [],
             "system": self._build_system_prompt()
         }
+
+        # 自动注入记忆
+        if self.memory:
+            memory_context = self.memory.get_context()
+            context["memory"] = memory_context
+
+        return context
 
     def confirm(self) -> str:
         """用户确认，执行 pending action"""
