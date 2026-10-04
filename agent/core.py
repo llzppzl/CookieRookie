@@ -309,7 +309,11 @@ summary: 总结
                     "thought": reasoning,
                     "action": action,
                     "tool_name": tool_name,
-                    "tool_args": tool_args
+                    "tool_args": tool_args,
+                    # 保存任务和历史，确认后从这里继续，而不是从空白开始
+                    "task": context.get("task", ""),
+                    "history": context["history"],
+                    "memory": context.get("memory"),
                 }
                 self._show_pending_action()
                 return "awaiting_confirmation"
@@ -371,7 +375,8 @@ summary: 总结
         context = {
             "task": self.pending_action.get("task", ""),
             "history": self.pending_action.get("history", []),
-            "system": self._build_system_prompt()
+            "system": self._build_system_prompt(),
+            "memory": self.pending_action.get("memory"),
         }
         context["history"].append({
             "action": action,
@@ -416,7 +421,8 @@ summary: 总结
         context = {
             "task": self.pending_action.get("task", ""),
             "history": self.pending_action.get("history", []),
-            "system": self._build_system_prompt()
+            "system": self._build_system_prompt(),
+            "memory": self.pending_action.get("memory"),
         }
         context["history"].append({
             "action": action,
@@ -578,7 +584,11 @@ summary: 总结
                     "thought": reasoning,
                     "action": action,
                     "tool_name": tool_name,
-                    "tool_args": tool_args
+                    "tool_args": tool_args,
+                    # 保存任务和历史，确认后从这里继续，而不是从空白开始
+                    "task": context.get("task", ""),
+                    "history": context["history"],
+                    "memory": context.get("memory"),
                 }
                 self._show_pending_action()
                 return "awaiting_confirmation"

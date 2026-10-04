@@ -156,8 +156,15 @@ class LLMClient:
         """构建用户消息"""
         parts = []
         
-        # Bug 报告
-        parts.append(f"## Bug Report\n{context['bug_report']}")
+        # Debug 模式传 bug_report，交互模式传 task
+        if context.get("bug_report"):
+            parts.append(f"## Bug Report\n{context['bug_report']}")
+        else:
+            parts.append(f"## Task\n{context.get('task', '')}")
+
+        # 项目记忆（交互模式下由 InteractiveAgent 注入）
+        if context.get("memory"):
+            parts.append("\n" + context["memory"])
         
         # 历史记录
         if context["history"]:
