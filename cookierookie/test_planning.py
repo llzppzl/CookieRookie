@@ -1,9 +1,9 @@
-"""agent/test_planning.py"""
+"""cookierookie/test_planning.py"""
 import pytest
 from unittest.mock import MagicMock
-from agent.core import InteractiveAgent
-from agent.tool_system import tool_system
-import agent.tools as tools_module
+from cookierookie.core import InteractiveAgent
+from cookierookie.tool_system import tool_system
+import cookierookie.tools as tools_module
 
 
 class TestPlanning:

@@ -1,2 +1,4 @@
 .env
-docs/coding-agent-report.md
+docs/coding-agent-report.mdbuild/
+*.egg-info/
+__pycache__/

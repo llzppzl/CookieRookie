@@ -1,8 +1,8 @@
-"""agent/test_explorer.py"""
+"""cookierookie/test_explorer.py"""
 import pytest
 import tempfile
 import os
-from agent.explorer import auto_detect_structure
+from cookierookie.explorer import auto_detect_structure
 
 
 class TestExplorer:

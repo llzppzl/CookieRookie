@@ -1,16 +1,16 @@
-"""agent/test_integration.py"""
+"""cookierookie/test_integration.py"""
 import pytest
 from unittest.mock import MagicMock, patch
-from agent.core import InteractiveAgent
-from agent.tool_system import tool_system
-from agent import tools
+from cookierookie.core import InteractiveAgent
+from cookierookie.tool_system import tool_system
+from cookierookie import tools
 
 
 class TestIntegration:
     def test_full_tool_system_setup(self):
         """测试完整工具系统初始化"""
         # 清空并重新注册
-        from agent import tools as tools_module
+        from cookierookie import tools as tools_module
         tools_module.register_base_tools()
 
         registered = tool_system.list_tools()
@@ -23,7 +23,7 @@ class TestIntegration:
 
     def test_confirmable_flags(self):
         """测试 confirmable 标志"""
-        from agent import tools as tools_module
+        from cookierookie import tools as tools_module
         tools_module.register_base_tools()
 
         assert tool_system.is_confirmable("read_file") is False
@@ -42,7 +42,7 @@ class TestIntegration:
             "done": False
         }
 
-        from agent import tools as tools_module
+        from cookierookie import tools as tools_module
         tools_module.register_base_tools()
 
         agent = InteractiveAgent(mock_llm, tool_system, max_iterations=1)

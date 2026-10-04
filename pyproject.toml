@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cookierookie"
+version = "0.1.0"
+description = "An AI coding agent that plans, asks before risky actions, and works on the project in your current directory."
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = ["requests"]
+
+[project.urls]
+Homepage = "https://github.com/llzppzl/CookieRookie"
+
+[project.scripts]
+cookierookie = "cookierookie.cli:run"
+
+[tool.setuptools]
+packages = ["cookierookie"]

@@ -1,8 +1,8 @@
-"""agent/test_test_tools.py"""
+"""cookierookie/test_test_tools.py"""
 import pytest
 import os
 import tempfile
-from agent.test_tools import test_run, test_generate, _detect_framework
+from cookierookie.test_tools import test_run, test_generate, _detect_framework
 
 
 class TestTestTools:

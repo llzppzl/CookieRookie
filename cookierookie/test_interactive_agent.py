@@ -1,4 +1,4 @@
-"""agent/test_interactive_agent.py"""
+"""cookierookie/test_interactive_agent.py"""
 import pytest
 from unittest.mock import MagicMock
 
@@ -26,7 +26,7 @@ class MockToolSystem:
 
 class TestInteractiveAgent:
     def test_initialization(self):
-        from agent.core import InteractiveAgent
+        from cookierookie.core import InteractiveAgent
         mock_llm = MagicMock()
         mock_ts = MockToolSystem()
         agent = InteractiveAgent(mock_llm, mock_ts, max_iterations=10)
@@ -36,7 +36,7 @@ class TestInteractiveAgent:
         assert agent.pending_action is None
 
     def test_build_tool_list(self):
-        from agent.core import InteractiveAgent
+        from cookierookie.core import InteractiveAgent
         mock_llm = MagicMock()
         mock_ts = MockToolSystem()
         mock_ts.register("read_file", lambda x: x, confirmable=False, description="read file")
@@ -47,7 +47,7 @@ class TestInteractiveAgent:
         assert "edit_file [需要确认]" in tool_list
 
     def test_pending_action_flow(self):
-        from agent.core import InteractiveAgent
+        from cookierookie.core import InteractiveAgent
         mock_llm = MagicMock()
         mock_ts = MockToolSystem()
         mock_ts.register("exec", lambda cmd: {"success": True}, confirmable=True, description="execute")
@@ -63,7 +63,7 @@ class TestInteractiveAgent:
         assert agent.pending_action["action"]["tool"] == "exec"
 
     def test_non_confirmable_tool_execution(self):
-        from agent.core import InteractiveAgent
+        from cookierookie.core import InteractiveAgent
         mock_llm = MagicMock()
         mock_ts = MockToolSystem()
         mock_ts.register("read", lambda path: {"content": "file content"}, confirmable=False, description="read file")
@@ -81,7 +81,7 @@ class TestInteractiveAgent:
         assert mock_llm.chat.call_count == 50
 
     def test_confirm_method(self):
-        from agent.core import InteractiveAgent
+        from cookierookie.core import InteractiveAgent
         mock_llm = MagicMock()
         mock_ts = MockToolSystem()
         mock_ts.register("exec", lambda cmd: {"success": True}, confirmable=True, description="execute")
@@ -107,7 +107,7 @@ class TestInteractiveAgent:
         assert agent.pending_action is None
 
     def test_reject_method(self):
-        from agent.core import InteractiveAgent
+        from cookierookie.core import InteractiveAgent
         mock_llm = MagicMock()
         mock_ts = MockToolSystem()
         agent = InteractiveAgent(mock_llm, mock_ts)
@@ -124,7 +124,7 @@ class TestInteractiveAgent:
         assert "Rejected" in result
 
     def test_edit_and_confirm_method(self):
-        from agent.core import InteractiveAgent
+        from cookierookie.core import InteractiveAgent
         mock_llm = MagicMock()
         mock_ts = MockToolSystem()
         mock_ts.register("exec", lambda cmd: {"success": True}, confirmable=True, description="execute")
@@ -149,7 +149,7 @@ class TestInteractiveAgent:
         assert agent.pending_action is None
 
     def test_show_pending_action(self):
-        from agent.core import InteractiveAgent
+        from cookierookie.core import InteractiveAgent
         mock_llm = MagicMock()
         mock_ts = MockToolSystem()
         agent = InteractiveAgent(mock_llm, mock_ts)
@@ -165,7 +165,7 @@ class TestInteractiveAgent:
         agent._show_pending_action()
 
     def test_done_returns_summary(self):
-        from agent.core import InteractiveAgent
+        from cookierookie.core import InteractiveAgent
         mock_llm = MagicMock()
         mock_ts = MockToolSystem()
         mock_ts.register("read", lambda path: {"content": "content"}, confirmable=False, description="read")

@@ -1,9 +1,9 @@
-"""agent/test_git_tools.py"""
+"""cookierookie/test_git_tools.py"""
 import pytest
 import os
 import tempfile
 import subprocess
-from agent.git_tools import git_status, git_diff, git_log
+from cookierookie.git_tools import git_status, git_diff, git_log
 
 
 class TestGitTools:

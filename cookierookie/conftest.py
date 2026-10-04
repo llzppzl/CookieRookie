@@ -1,4 +1,4 @@
-"""agent/conftest.py - pytest configuration"""
+"""cookierookie/conftest.py - pytest configuration"""
 import pytest
 
 

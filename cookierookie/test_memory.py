@@ -1,9 +1,9 @@
-"""agent/test_memory.py"""
+"""cookierookie/test_memory.py"""
 import pytest
 import tempfile
 import os
 import json
-from agent.memory import ProjectMemory
+from cookierookie.memory import ProjectMemory
 
 
 class TestProjectMemory:

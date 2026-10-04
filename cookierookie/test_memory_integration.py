@@ -1,10 +1,10 @@
-"""agent/test_memory_integration.py"""
+"""cookierookie/test_memory_integration.py"""
 import pytest
 import tempfile
 import os
 from unittest.mock import MagicMock
-from agent.core import InteractiveAgent
-from agent.tool_system import tool_system
+from cookierookie.core import InteractiveAgent
+from cookierookie.tool_system import tool_system
 
 
 class TestMemoryIntegration:

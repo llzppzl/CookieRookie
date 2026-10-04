@@ -1,4 +1,4 @@
-"""agent/explorer.py"""
+"""cookierookie/explorer.py"""
 import os
 from typing import Dict
 

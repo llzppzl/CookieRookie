@@ -13,45 +13,55 @@ An autonomous AI coding agent that understands your codebase, writes code, gener
 
 ## Quick Start
 
+Requires Python 3.9+.
+
 ```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+# 1. Install the `cookierookie` command
+pip install git+https://github.com/llzppzl/CookieRookie.git
 
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your API key
+# 2. Set your API key once (any provider in the table below)
+mkdir -p ~/.config/cookierookie
+cat > ~/.config/cookierookie/.env <<'ENV'
+ANTHROPIC_API_KEY=your-api-key-here
+MODEL_ID=MiniMax-M2.5
+ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
+ENV
 
-# 3. Run in interactive mode
-python main.py --interactive
+# 3. Go to your own project and start
+cd path/to/your-project
+cookierookie
 ```
+
+CookieRookie works on the directory you start it in. Reading and searching run automatically; editing files and running commands wait for your `/confirm`.
 
 ## Two Modes
 
 ### Interactive Mode (Recommended)
 
 ```bash
-python main.py --interactive
+cookierookie
 > help  # Show available commands
 > 帮我写一个计算器模块
 > 为 src/calculator.py 生成测试
 > 修复登录功能的 bug
 ```
 
-### Debug Mode (Original)
+### Debug Mode
 
 ```bash
-python main.py "Your bug description here"
+cookierookie "Your bug description here"
 ```
 
 ## Configuration
 
-Create a `.env` file:
+CookieRookie reads these settings, highest priority first:
 
-```bash
-ANTHROPIC_API_KEY=your-api-key-here
-MODEL_ID=MiniMax-M2.5
-ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
-```
+1. Environment variables (`ANTHROPIC_API_KEY`, `MODEL_ID`, `ANTHROPIC_BASE_URL`)
+2. `.env` in the directory you run it from
+3. `~/.config/cookierookie/.env`
+4. `.env` in the repository root (only when running from a source checkout)
+
+See [.env.example](.env.example) for all options.
 
 ### Supported Models
 
@@ -62,6 +72,17 @@ ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
 | Kimi | `kimi-k2.5` | `https://api.moonshot.ai/anthropic` |
 | GLM | `glm-5` | `https://api.z.ai/api/anthropic` |
 | Anthropic | `claude-sonnet-4-6` | `https://api.anthropic.com` |
+
+### Running from source
+
+```bash
+git clone https://github.com/llzppzl/CookieRookie.git
+cd CookieRookie
+pip install -e .
+python -m pytest
+```
+
+`python main.py` still works for existing setups.
 
 ## Interactive Commands
 
@@ -103,20 +124,20 @@ ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
 
 ```
 CookieRookie/
-├── agent/
+├── cookierookie/
 │   ├── __init__.py
+│   ├── cli.py               # Command-line entry point, LLM client, config loading
 │   ├── core.py              # Agent logic (DebugAgent, InteractiveAgent)
 │   ├── tools.py             # Base file tools
 │   ├── tool_system.py       # Plugin-based tool registry
 │   ├── memory.py            # Project memory
 │   ├── explorer.py          # Auto-detect project structure
 │   ├── git_tools.py         # Git operations
-│   └── test_tools.py        # Test execution & generation
-├── docs/
-│   ├── specs/               # Design specifications
-│   └── plans/               # Implementation plans
-├── main.py                  # Entry point
-├── requirements.txt
+│   ├── test_tools.py        # Test execution & generation
+│   └── test_*.py            # Tests
+├── docs/superpowers/        # Design specs and implementation plans
+├── main.py                  # Backward-compatible entry point
+├── pyproject.toml
 └── .env.example
 ```
 
@@ -125,7 +146,7 @@ CookieRookie/
 ### Write Code
 
 ```bash
-python main.py --interactive
+cookierookie
 > 帮我写一个用户管理模块
 # Agent plans and asks for confirmation
 > /confirm
@@ -134,7 +155,7 @@ python main.py --interactive
 ### Generate Tests
 
 ```bash
-python main.py --interactive
+cookierookie
 > 为 src/calculator.py 生成测试
 # Agent creates test file and runs it
 ```
@@ -142,13 +163,13 @@ python main.py --interactive
 ### Debug
 
 ```bash
-python main.py "calculator.py returns wrong result when dividing by zero"
+cookierookie "calculator.py returns wrong result when dividing by zero"
 ```
 
 ### Plan Mode
 
 ```bash
-python main.py --interactive
+cookierookie
 > 帮我重构登录模块，添加测试
 
 ## 执行计划
@@ -166,7 +187,7 @@ python main.py --interactive
 
 ### Adding New Tools
 
-1. Implement the tool function in `agent/tools.py`:
+1. Implement the tool function in `cookierookie/tools.py`:
 
 ```python
 def my_tool(param1: str) -> dict:
@@ -187,7 +208,7 @@ tool_system.register(
 
 ### Changing System Prompt
 
-Edit `SYSTEM_PROMPT` in `agent/core.py` to customize agent behavior.
+Edit `SYSTEM_PROMPT` in `cookierookie/core.py` to customize agent behavior.
 
 ## Architecture
 

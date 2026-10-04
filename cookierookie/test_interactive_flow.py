@@ -1,14 +1,14 @@
-"""agent/test_interactive_flow.py - 交互模式端到端流程（用假 LLM，不调用真实 API）"""
+"""cookierookie/test_interactive_flow.py - 交互模式端到端流程（用假 LLM，不调用真实 API）"""
 import copy
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from main import LLMClient
-from agent.core import InteractiveAgent
-from agent.tool_system import tool_system
-import agent.tools as tools_module
+from cookierookie.cli import LLMClient
+from cookierookie.core import InteractiveAgent
+from cookierookie.tool_system import tool_system
+import cookierookie.tools as tools_module
 
 
 class ScriptedLLM:

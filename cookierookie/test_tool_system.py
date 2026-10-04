@@ -1,6 +1,6 @@
-"""agent/test_tool_system.py"""
+"""cookierookie/test_tool_system.py"""
 import pytest
-from agent.tool_system import ToolSystem, ToolDef
+from cookierookie.tool_system import ToolSystem, ToolDef
 
 
 def dummy_echo(msg: str) -> dict:
