@@ -63,6 +63,8 @@ CookieRookie reads these settings, highest priority first:
 
 See [.env.example](.env.example) for all options.
 
+`MAX_TOKENS` (default 8192) limits each model reply. If CookieRookie reports that a reply was cut off, raise it.
+
 ### Supported Models
 
 | Provider | Model ID | Base URL |

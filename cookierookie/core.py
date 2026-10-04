@@ -101,6 +101,9 @@ class DebugAgent:
             if done:
                 return summary or "Bug fixed!"
             
+            if response.get("fatal"):
+                return f"LLM error: {response['error']}"
+
             if not action:
                 print(f"Warning: No action in response, ending.")
                 return f"LLM did not provide action. Response: {response}"
@@ -284,6 +287,11 @@ summary: 总结
 
             if done:
                 return summary or "Task completed!"
+
+            # API 报错（key 错误、额度不足等）或输出被截断，重试也不会好，停下来告诉用户
+            # 格式解析失败不算，模型下一轮可能就输出正确了
+            if response.get("fatal"):
+                return f"LLM error: {response['error']}"
 
             if not action:
                 print(f"Warning: No action in response, continuing.")
@@ -561,6 +569,11 @@ summary: 总结
 
             if done:
                 return summary or "Task completed!"
+
+            # API 报错（key 错误、额度不足等）或输出被截断，重试也不会好，停下来告诉用户
+            # 格式解析失败不算，模型下一轮可能就输出正确了
+            if response.get("fatal"):
+                return f"LLM error: {response['error']}"
 
             if not action:
                 print(f"Warning: No action in response, continuing.")

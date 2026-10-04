@@ -25,13 +25,19 @@ REPO_DIR = Path(__file__).resolve().parent.parent
 USER_CONFIG = Path.home() / ".config" / "cookierookie" / ".env"
 
 
+# 1024 写不下一个中等大小的文件，write_file / test_generate 会被截断
+DEFAULT_MAX_TOKENS = 8192
+
+
 class LLMClient:
     """通用 LLM 客户端 (Anthropic 兼容模式)"""
     
-    def __init__(self, api_key: str, model: str = "MiniMax-M2.5", base_url: str = "https://api.minimax.io/anthropic"):
+    def __init__(self, api_key: str, model: str = "MiniMax-M2.5", base_url: str = "https://api.minimax.io/anthropic",
+                 max_tokens: int = DEFAULT_MAX_TOKENS):
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
+        self.max_tokens = max_tokens
     
     def chat(self, context: dict) -> dict:
         """调用 LLM API (Anthropic 兼容格式)"""
@@ -51,7 +57,7 @@ class LLMClient:
         data = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": 1024,
+            "max_tokens": self.max_tokens,
             "temperature": 0.7,
             "system": system_prompt
         }
@@ -64,9 +70,20 @@ class LLMClient:
         )
         
         if response.status_code != 200:
-            return {"action": None, "error": f"API error: {response.status_code} - {response.text[:500]}", "raw": response.text}
+            return {"action": None, "error": f"API error: {response.status_code} - {response.text[:500]}",
+                    "raw": response.text, "fatal": True}
         
         result = response.json()
+
+        # 输出被 max_tokens 截断时，解析结果不可信（例如 write_file 只写了半个文件），直接报错
+        if result.get("stop_reason") == "max_tokens":
+            return {
+                "action": None,
+                "error": f"The model's reply was cut off at max_tokens={self.max_tokens}. "
+                         f"Set MAX_TOKENS to a higher value or ask for a smaller change.",
+                "raw": "",
+                "fatal": True,
+            }
         
         # 遍历所有 content blocks
         json_content = ""
@@ -336,6 +353,7 @@ ENV_KEYS = {
     "ANTHROPIC_API_KEY": "api_key",
     "ANTHROPIC_BASE_URL": "base_url",
     "MODEL_ID": "model",
+    "MAX_TOKENS": "max_tokens",
 }
 
 
@@ -367,7 +385,8 @@ def load_config():
     config = {
         "api_key": None,
         "model": "MiniMax-M2.5",
-        "base_url": "https://api.minimax.io/anthropic"
+        "base_url": "https://api.minimax.io/anthropic",
+        "max_tokens": DEFAULT_MAX_TOKENS,
     }
 
     # 先读优先级低的，后读的覆盖前面的
@@ -380,6 +399,12 @@ def load_config():
     for key, field in ENV_KEYS.items():
         if os.environ.get(key):
             config[field] = os.environ[key]
+
+    try:
+        config["max_tokens"] = int(config["max_tokens"])
+    except ValueError:
+        print(f"Warning: MAX_TOKENS={config['max_tokens']!r} is not a number, using {DEFAULT_MAX_TOKENS}")
+        config["max_tokens"] = DEFAULT_MAX_TOKENS
 
     return config
 
@@ -414,7 +439,8 @@ def main():
     llm_client = LLMClient(
         config["api_key"], 
         config["model"], 
-        config["base_url"]
+        config["base_url"],
+        config["max_tokens"],
     )
     agent = DebugAgent(llm_client)
     
@@ -448,7 +474,8 @@ def interactive_main():
     llm_client = LLMClient(
         config["api_key"],
         config["model"],
-        config["base_url"]
+        config["base_url"],
+        config["max_tokens"],
     )
     agent = create_interactive_agent(llm_client, tool_system)
     agent.current_plan = None
