@@ -3,9 +3,99 @@ Debug Agent 核心逻辑
 """
 
 import json
+import os
 import re
 from typing import Optional
 from .tools import register_tools
+from .tool_system import tool_system
+
+
+# ========== Debug 模式：执行危险操作前先询问 ==========
+
+PREVIEW_LINES = 20
+
+
+def run_tool(fn, args: dict) -> dict:
+    """执行工具。工具抛异常（比如模型编了一个不存在的参数）时，把错误作为结果交给模型，
+    让它修正调用，而不是让整个运行崩掉。"""
+    try:
+        return fn(**args)
+    except Exception as e:
+        return {"success": False, "error": f"{type(e).__name__}: {e}"}
+
+
+def declined(reason: str = "") -> dict:
+    """用户拒绝某个修改或命令时，模型看到的结果"""
+    error = "The user declined this action."
+    if reason:
+        error += f" They said: {reason}"
+    return {"success": False, "error": error}
+
+
+def _prefixed(prefix: str, text) -> str:
+    lines = str(text).splitlines() or [""]
+    shown = [prefix + line for line in lines[:PREVIEW_LINES]]
+    if len(lines) > PREVIEW_LINES:
+        shown.append(f"  ... {len(lines) - PREVIEW_LINES} more lines")
+    return "\n".join(shown)
+
+
+def _line_of(path: str, line) -> Optional[str]:
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+        return lines[int(line) - 1] if int(line) >= 1 else None
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def preview_action(tool_name: str, args: dict) -> str:
+    """展示修改或命令会做什么，让用户在执行前决定"""
+    path = args.get("path", "")
+    if tool_name == "exec":
+        details = ", ".join(f"{k}={args[k]}" for k in ("workdir", "timeout") if args.get(k))
+        return f"Run command{' (' + details + ')' if details else ''}:\n  {args.get('command', '')}"
+    if tool_name == "edit_file" and args.get("line") is not None:
+        old = _line_of(path, args["line"])
+        before = _prefixed("- ", old) if old is not None else "  (this line does not exist)"
+        return f"Edit {path}, line {args['line']}:\n{before}\n{_prefixed('+ ', args.get('new_string', ''))}"
+    if tool_name == "edit_file":
+        return (f"Edit {path}:\n{_prefixed('- ', args.get('old_string', ''))}\n"
+                f"{_prefixed('+ ', args.get('new_string', ''))}")
+    if tool_name == "write_file":
+        content = str(args.get("content", ""))
+        verb = "Overwrite" if os.path.exists(path) else "Create"
+        return f"{verb} {path} ({len(content.splitlines())} lines):\n{_prefixed('+ ', content)}"
+    return f"{tool_name}(" + ", ".join(f"{k}={v!r}" for k, v in args.items()) + ")"
+
+
+def ask_in_terminal(tool_name: str, args: dict):
+    """展示修改或命令，询问是否执行。
+
+    返回 (answer, reason)：answer 为 "yes"、"all"（这一步和之后的都允许）、"no" 或 "quit"。
+    输入 y / a / q 以外的文字算拒绝，并把这段话转告给模型。
+    """
+    print("\n" + preview_action(tool_name, args))
+    try:
+        reply = input("Allow? [y]es / [N]o / [a]ll / [q]uit, or tell the agent what to do instead: ").strip()
+    except EOFError:
+        return "quit", ("there is no terminal to ask in. Run it in a terminal, "
+                        "or pass --yes to allow edits and commands without asking")
+    word = reply.lower()
+    if word in ("y", "yes"):
+        return "yes", ""
+    if word in ("a", "all"):
+        return "all", ""
+    if word in ("q", "quit"):
+        return "quit", ""
+    if word in ("", "n", "no"):
+        return "no", ""
+    return "no", reply
+
+
+def approve_all(tool_name: str, args: dict):
+    """不询问，全部允许（python main.py --yes "bug"）"""
+    return "yes", ""
 
 
 SYSTEM_PROMPT = """你是一个 Debug Agent。你的任务是通过工具自动定位并修复代码中的 bug。
@@ -72,11 +162,14 @@ done: false
 
 
 class DebugAgent:
-    def __init__(self, llm_client, max_iterations: int = 10):
+    def __init__(self, llm_client, max_iterations: int = 10, ask=None):
+        """ask(tool_name, args) 在每个修改/命令执行前做决定，返回 (answer, reason)，
+        默认是 ask_in_terminal；传 approve_all 则不询问。"""
         self.llm = llm_client
         self.tools = register_tools()
         self.max_iterations = max_iterations
-    
+        self.ask = ask or ask_in_terminal
+
     def run(self, bug_report: str) -> str:
         """运行 agent"""
         context = self._build_initial_context(bug_report)
@@ -115,11 +208,23 @@ class DebugAgent:
             if tool_name not in self.tools:
                 return f"Unknown tool: {tool_name}"
             
-            print(f"Executing: {tool_name}({tool_args})")
-            
-            tool_func = self.tools[tool_name]
-            result = tool_func(**tool_args)
-            
+            # 修改文件、执行命令前先问用户
+            answer, reason = "yes", ""
+            if tool_system.is_confirmable(tool_name):
+                answer, reason = self.ask(tool_name, tool_args)
+                if answer == "quit":
+                    return f"Stopped before {tool_name}" + (f": {reason}." if reason else " (it did not run).")
+                if answer == "all":
+                    print("Allowing every edit and command for the rest of this run.")
+                    self.ask = approve_all
+
+            if answer == "no":
+                print(f"Skipped: {tool_name}")
+                result = declined(reason)
+            else:
+                print(f"Executing: {tool_name}({tool_args})")
+                result = run_tool(self.tools[tool_name], tool_args)
+
             # 打印结果摘要
             result_summary = json.dumps(result, ensure_ascii=False)
             if len(result_summary) > 300:
@@ -145,9 +250,9 @@ class DebugAgent:
         }
 
 
-def create_agent(llm_client, max_iterations: int = 50) -> DebugAgent:
+def create_agent(llm_client, max_iterations: int = 50, ask=None) -> DebugAgent:
     """创建 Debug Agent"""
-    return DebugAgent(llm_client, max_iterations)
+    return DebugAgent(llm_client, max_iterations, ask)
 
 
 def create_interactive_agent(llm_client, tool_system, max_iterations: int = 50) -> 'InteractiveAgent':

@@ -13,7 +13,7 @@ import requests
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from agent import DebugAgent
-from agent.core import create_interactive_agent
+from agent.core import create_interactive_agent, approve_all
 
 
 # 获取当前项目目录
@@ -345,12 +345,16 @@ def load_config():
 
 
 def main():
-    # 获取 bug 描述
-    bug_report = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("DEBUG_BUG_REPORT", "")
+    # 获取 bug 描述；--yes / -y 表示修改文件和执行命令前不再询问
+    args = sys.argv[1:]
+    approve = any(a in ("--yes", "-y") for a in args)
+    args = [a for a in args if a not in ("--yes", "-y")]
+    bug_report = args[0] if args else os.environ.get("DEBUG_BUG_REPORT", "")
     
     if not bug_report:
-        print("Usage: python main.py \"Your bug description\"")
+        print("Usage: python main.py [--yes] \"Your bug description\"")
         print("Or set DEBUG_BUG_REPORT environment variable")
+        print("--yes, -y: run edits and commands without asking")
         return
     
     # 加载配置
@@ -370,7 +374,7 @@ def main():
         config["model"], 
         config["base_url"]
     )
-    agent = DebugAgent(llm_client)
+    agent = DebugAgent(llm_client, ask=approve_all if approve else None)
     
     # 运行
     print(f"Starting Debug Agent ({config['model']})...")

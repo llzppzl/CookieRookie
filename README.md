@@ -43,6 +43,11 @@ python main.py --interactive
 python main.py "Your bug description here"
 ```
 
+Before each file edit or shell command, the agent shows what it will do and asks:
+`y` runs it, Enter or `n` skips it, `a` allows the rest of the run, `q` stops.
+Anything else you type skips the step and is passed to the agent as feedback.
+Pass `--yes` to run everything without asking.
+
 ## Configuration
 
 Create a `.env` file:
