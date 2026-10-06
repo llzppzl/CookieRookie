@@ -38,6 +38,11 @@ def repo(tmp_path, monkeypatch):
     for args in (["init", "-q"], ["config", "user.name", "Test"], ["config", "user.email", "test@example.com"]):
         subprocess.run(["git", *args], cwd=tmp_path, check=True)
     monkeypatch.chdir(tmp_path)
+    # The tests commit with "git add .". If the tools ran git in another directory, they would
+    # commit there: the old code, run with these tests, committed in the CookieRookie checkout
+    (tmp_path / "probe").write_text("")
+    assert git_status()["files"] == ["probe"], "the git tools must run git in the current directory"
+    (tmp_path / "probe").unlink()
     return tmp_path
 
 
@@ -95,9 +100,13 @@ def test_a_path_or_branch_is_not_read_as_an_option(repo):
     (repo / "a.py").write_text("")
     git_commit("Add a.py")
 
-    git_diff("--output=leak.txt")
-    assert not (repo / "leak.txt").exists()
-    assert git_checkout("--orphan")["success"] is False
+    leak = repo / "leak.txt"
+
+    # An absolute path, so the file is found wherever git runs
+    git_diff(f"--output={leak}")
+    assert not leak.exists()
+    # git checkout --detach would succeed if it were read as an option
+    assert git_checkout("--detach")["success"] is False
 
 
 def test_committing_and_switching_branches_ask_first():
