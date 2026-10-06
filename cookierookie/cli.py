@@ -9,6 +9,7 @@ CookieRookie 命令行入口
 """
 
 import argparse
+import ast
 import os
 import shlex
 import json
@@ -32,6 +33,27 @@ USER_CONFIG = Path.home() / ".config" / "cookierookie" / ".env"
 DEFAULT_MAX_TOKENS = 8192
 
 
+# Users' answers to a pending action, as the model reads them in the history
+USER_DECISIONS = {
+    "confirmed": " (the user allowed it)",
+    "edit_confirmed": " (the user changed the arguments, then allowed it)",
+    "rejected": " (the user declined it)",
+}
+
+# Long arguments (file content, replacement text) are shortened in the history
+ARG_PREVIEW_CHARS = 200
+
+
+def _show_arg(value) -> str:
+    """An argument of an earlier tool call, as the model sees it in the history. Strings are quoted
+    and escaped, so quotes and newlines in them stay readable."""
+    if not isinstance(value, str):
+        return repr(value)
+    if len(value) > ARG_PREVIEW_CHARS:
+        value = value[:ARG_PREVIEW_CHARS] + f"... [{len(value)} characters in total]"
+    return json.dumps(value, ensure_ascii=False)
+
+
 class LLMClient:
     """通用 LLM 客户端 (Anthropic 兼容模式)"""
     
@@ -43,7 +65,13 @@ class LLMClient:
         self.max_tokens = max_tokens
     
     def chat(self, context: dict) -> dict:
-        """调用 LLM API (Anthropic 兼容格式)"""
+        """调用 LLM API (Anthropic 兼容格式)
+
+        The tools in context["tools"] are offered through the API's tool use, so a tool call comes
+        back as JSON and its arguments (file content with quotes, backslashes, newlines) arrive exactly.
+        With tools offered, a reply that calls none is the model's final answer. Replies in the older
+        text format (thought: / action: / done:) are still understood.
+        """
         messages = [
             {"role": "user", "content": self._build_user_message(context)}
         ]
@@ -64,7 +92,9 @@ class LLMClient:
             "temperature": 0.7,
             "system": system_prompt
         }
-        
+        if context.get("tools"):
+            data["tools"] = context["tools"]
+
         try:
             response = requests.post(
                 f"{self.base_url}/v1/messages",
@@ -92,28 +122,50 @@ class LLMClient:
             }
         
         # 遍历所有 content blocks
-        json_content = ""
+        text_parts = []
         thinking_content = ""
-        
-        if "content" in result:
-            for block in result["content"]:
-                if block.get("type") == "text":
-                    json_content = block.get("text", "")
-                elif block.get("type") == "thinking":
-                    thinking_content = block.get("thinking", "")
-        
+        tool_calls = []
+
+        for block in result.get("content") or []:
+            if block.get("type") == "text":
+                text_parts.append(block.get("text", ""))
+            elif block.get("type") == "thinking":
+                thinking_content = block.get("thinking", "")
+            elif block.get("type") == "tool_use":
+                tool_calls.append(block)
+        text = "\n".join(part for part in text_parts if part).strip()
+
         # 打印 thinking（调试用）
         if thinking_content:
             print(f"\n=== LLM Thinking ===\n{thinking_content[:300]}...\n=====================\n")
-        
+
+        # One tool per step: if the model asked for several, the first one runs and it can ask
+        # for the others in its next reply, with this result in front of it
+        if tool_calls:
+            call = tool_calls[0]
+            return {
+                "thought": text,
+                "action": {"tool": call.get("name"), "args": call.get("input") or {}},
+                "done": False,
+                "summary": "",
+                "raw": text,
+            }
+
         # 解析响应
-        parsed = self._parse_response(json_content)
-        
-        if parsed:
-            parsed["raw"] = json_content
+        parsed = self._parse_response(text)
+
+        if parsed and (parsed["action"] or parsed["done"]):
+            parsed["raw"] = text
             return parsed
-        
-        return {"action": None, "error": f"Failed to parse: {json_content[:200]}", "raw": json_content}
+
+        if context.get("tools") and text:
+            return {"thought": "", "action": {}, "done": True, "summary": text, "raw": text}
+
+        if parsed:
+            parsed["raw"] = text
+            return parsed
+
+        return {"action": None, "error": f"Failed to parse: {text[:200]}", "raw": text}
     
     def _parse_response(self, content: str) -> dict:
         """解析 LLM 响应 - 支持多种格式"""
@@ -126,17 +178,21 @@ class LLMClient:
             "summary": ""
         }
         
+        # Labels in any case: a model may copy "Thought:" / "Action:" from the history
         # 提取 thought
-        thought_match = re.search(r'thought:\s*(.+?)(?=\naction:|$)', content, re.DOTALL)
+        # The thought ends at the next label, which is done: when there is no action
+        thought_match = re.search(r'thought:\s*(.+?)(?=\n(?:action|done|summary):|$)', content,
+                                  re.DOTALL | re.IGNORECASE)
         if thought_match:
             result["thought"] = thought_match.group(1).strip()
-        
+
         # 提取 action
-        action_match = re.search(r'action:\s*(.+?)(?=\ndone:|$)', content, re.DOTALL)
+        action_match = re.search(r'action:\s*(.+?)(?=\ndone:|$)', content, re.DOTALL | re.IGNORECASE)
         if action_match:
             action_str = action_match.group(1).strip()
             if action_str:
-                func_match = re.match(r'(\w+)\((.*)\)', action_str)
+                # DOTALL: the arguments can span lines (file content)
+                func_match = re.match(r'(\w+)\((.*)\)', action_str, re.DOTALL)
                 if func_match:
                     tool_name = func_match.group(1)
                     args_str = func_match.group(2)
@@ -149,7 +205,7 @@ class LLMClient:
             result["done"] = done_match.group(1).lower() == "true"
         
         # 提取 summary
-        summary_match = re.search(r'summary:\s*(.+?)$', content, re.DOTALL)
+        summary_match = re.search(r'summary:\s*(.+?)$', content, re.DOTALL | re.IGNORECASE)
         if summary_match:
             result["summary"] = summary_match.group(1).strip()
         
@@ -160,6 +216,15 @@ class LLMClient:
     
     def _parse_args(self, args_str: str) -> dict:
         """解析工具参数 - 支持多种格式"""
+        # The text format looks like a Python call, so read it as one first. That gets quotes inside
+        # strings and escapes like \n right. If it isn't valid Python, the patterns below take over.
+        try:
+            call = ast.parse(f"f({args_str})", mode="eval").body
+            if isinstance(call, ast.Call) and call.keywords and not call.args:
+                return {kw.arg: ast.literal_eval(kw.value) for kw in call.keywords if kw.arg}
+        except (SyntaxError, ValueError, TypeError):
+            pass
+
         args = {}
         
         # 数字参数: key=123
@@ -196,29 +261,32 @@ class LLMClient:
         
         # 历史记录
         if context["history"]:
-            parts.append("\n## History (你之前做了什么)")
-            for h in context["history"]:
+            parts.append("\n## History (what you have done so far)")
+            for step, h in enumerate(context["history"], 1):
                 action = h.get("action", {})
                 result = h.get("result", {})
                 thought = h.get("thought", "")
                 iteration = h.get("iteration", "?")
-                
+
                 tool_name = action.get("tool", "unknown")
                 args = action.get("args", {})
-                
-                parts.append(f"\n### 第 {iteration} 轮")
-                parts.append(f" Thought: {thought}")
-                
+
+                # Steps are numbered here: iteration restarts after each /confirm, and is
+                # "confirmed", "edit_confirmed" or "rejected" for the step the user answered
+                parts.append(f"\n### Step {step}{USER_DECISIONS.get(iteration, '')}")
+                if thought:
+                    parts.append(f" Thought: {thought}")
+
                 if tool_name and tool_name != "unknown":
-                    args_parts = []
-                    for k, v in args.items():
-                        if k == "new_string" and len(str(v)) > 50:
-                            args_parts.append(f'{k}="[内容截断]"')
-                        else:
-                            args_parts.append(f'{k}="{v}"' if isinstance(v, str) else f'{k}={v}')
-                    args_str = ", ".join(args_parts)
+                    # 原来的写法：new_string 超过 50 字符就整段省略（保留作学习对比）
+                    # for k, v in args.items():
+                    #     if k == "new_string" and len(str(v)) > 50:
+                    #         args_parts.append(f'{k}="[内容截断]"')
+                    #     else:
+                    #         args_parts.append(f'{k}="{v}"' if isinstance(v, str) else f'{k}={v}')
+                    args_str = ", ".join(f"{k}={_show_arg(v)}" for k, v in args.items())
                     parts.append(f" Action: {tool_name}({args_str})")
-                
+
                 # ===== 旧的结果摘要逻辑（保留作学习对比） =====
                 # if tool_name == "read_file" and result.get("success"):
                 #     parts.append(f" Result: 文件内容已读取")
@@ -235,17 +303,19 @@ class LLMClient:
                 #     parts.append(f" Result: success")
 
                 # ===== 新的结果摘要逻辑：保留状态 + 关键细节 =====
+
+                # 没有 result 的情况（或者工具返回的不是 dict）
+                if not isinstance(result, dict):
+                    parts.append(f" Result: {'(nothing returned)' if result is None else result}")
+                    continue
+
                 success = result.get("success")
 
                 # 统一的失败分支
-                if success is False:
-                    error_msg = result.get("error", result.get("stderr", "unknown"))
-                    parts.append(f" Result: 失败 - {error_msg}")
-                    continue
-
-                # 没有 result 的情况
-                if result is None:
-                    parts.append(" Result: 无返回结果")
+                # A failure without an error message (a command or test run that exited with an
+                # error) falls through, so the model sees its output and can tell why it failed
+                if success is False and result.get("error"):
+                    parts.append(f" Result: failed - {result['error']}")
                     continue
 
                 # 按工具类型分别给出「一句话总结 + 关键字段」
@@ -254,7 +324,7 @@ class LLMClient:
                     total = result.get("total", "?")
                     content = result.get("content", "")
 
-                    parts.append(f" Result: 读取了 {lines} 行（共 {total} 行）代码。")
+                    parts.append(f" Result: lines {lines} of {total}.")
 
                     # 对长文件做截断，但明确标出
                     max_chars = 2000
@@ -265,22 +335,22 @@ class LLMClient:
                         truncated = True
 
                     if snippet:
-                        parts.append("\n```code\n" + snippet + ("\n... [内容已截断]" if truncated else "") + "\n```")
+                        parts.append("\n```code\n" + snippet + ("\n... [cut off]" if truncated else "") + "\n```")
 
                 elif tool_name == "exec":
                     returncode = result.get("returncode")
                     stdout = (result.get("stdout") or "").strip()
                     stderr = (result.get("stderr") or "").strip()
 
-                    parts.append(f" Result: 命令执行完成，returncode={returncode}.")
+                    parts.append(f" Result: the command exited with code {returncode}.")
 
                     def _truncate(text: str, label: str) -> str:
                         if not text:
                             return ""
                         max_len = 800
                         if len(text) > max_len:
-                            return f"{label}（前 {max_len} 字符）：\n{text[:max_len]}\n... [输出已截断]\n"
-                        return f"{label}：\n{text}\n"
+                            return f"{label} (first {max_len} characters):\n{text[:max_len]}\n... [cut off]\n"
+                        return f"{label}:\n{text}\n"
 
                     snippet_blocks = []
                     if stdout:
@@ -297,7 +367,7 @@ class LLMClient:
                     mode = result.get("mode") or ("line" if "line" in args else "old_string")
                     new_line = result.get("new_line")
 
-                    summary = f" Result: 编辑成功（mode={mode}"
+                    summary = f" Result: edited (mode={mode}"
                     if line_no:
                         summary += f", line={line_no}"
                     if path:
@@ -306,34 +376,34 @@ class LLMClient:
                     parts.append(summary)
 
                     if new_line:
-                        parts.append(f" 新行内容: {new_line}")
+                        parts.append(f" New line: {new_line}")
 
                 elif tool_name == "search_files" and success:
                     count = result.get("count", 0)
                     matches = result.get("matches") or []
-                    parts.append(f" Result: 搜索到 {count} 处匹配。")
+                    parts.append(f" Result: {count} matches.")
 
                     # 展示前若干条匹配，避免一次性塞太多
                     max_items = 5
                     if matches:
-                        parts.append(" 部分匹配示例：")
+                        parts.append(" First matches:")
                         for m in matches[:max_items]:
                             parts.append(f"  - {m.get('file')}:{m.get('line')}: {m.get('content')}")
                         if count > max_items:
-                            parts.append(f"  ... 其余 {count - max_items} 条已省略。")
+                            parts.append(f"  ... and {count - max_items} more.")
 
                 elif tool_name == "find_files" and success:
                     count = result.get("count", 0)
                     matches = result.get("matches") or []
-                    parts.append(f" Result: 找到 {count} 个文件。")
+                    parts.append(f" Result: {count} files.")
 
                     max_items = 10
                     if matches:
-                        parts.append(" 文件列表（部分）：")
+                        parts.append(" First files:")
                         for p in matches[:max_items]:
                             parts.append(f"  - {p}")
                         if count > max_items:
-                            parts.append(f"  ... 其余 {count - max_items} 个已省略。")
+                            parts.append(f"  ... and {count - max_items} more.")
 
                 else:
                     # 其他工具：直接给出一个截断后的 JSON 视图，避免完全丢信息
@@ -341,7 +411,7 @@ class LLMClient:
                         result_json = json.dumps(result, ensure_ascii=False)
                         max_len = 800
                         if len(result_json) > max_len:
-                            result_json = result_json[:max_len] + "... [结果已截断]"
+                            result_json = result_json[:max_len] + "... [cut off]"
                         parts.append(f" Result(raw): {result_json}")
                     except Exception:
                         parts.append(f" Result: {result}")

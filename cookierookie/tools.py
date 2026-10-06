@@ -257,21 +257,102 @@ def find_files(pattern: str, path: str = ".", use_regex: bool = False) -> dict:
 
 # ========== 工具注册 ==========
 
+def _args(required, **properties) -> dict:
+    """JSON Schema for a tool's arguments. Each property is (type, description)."""
+    return {
+        "type": "object",
+        "properties": {name: {"type": t, "description": d} for name, (t, d) in properties.items()},
+        "required": list(required),
+    }
+
+
 def register_base_tools() -> None:
-    """注册基础工具到 ToolSystem"""
-    tool_system.register("read_file", read_file, confirmable=False)
-    tool_system.register("edit_file", edit_file, confirmable=True)
-    tool_system.register("write_file", write_file, confirmable=True)
-    tool_system.register("exec", exec, confirmable=True)
-    tool_system.register("search_files", search_files, confirmable=False)
-    tool_system.register("find_files", find_files, confirmable=False)
+    """注册基础工具到 ToolSystem
+
+    The descriptions and schemas are what the model sees, so they say what each argument means.
+    """
+    tool_system.register(
+        "read_file", read_file,
+        description="Read part of a text file. Returns the lines and the file's total line count.",
+        args_schema=_args(
+            ["path"],
+            path=("string", "File path, relative to the current directory"),
+            offset=("integer", "First line to read, counting from 1. Default 1"),
+            limit=("integer", "Maximum number of lines to read. Default 100"),
+        ))
+    tool_system.register(
+        "edit_file", edit_file, confirmable=True,
+        description="Change part of a file: give line to replace that line with new_string (read the file "
+                    "first to get the number), or old_string to replace its first occurrence. "
+                    "The user is asked first.",
+        args_schema=_args(
+            ["path", "new_string"],
+            path=("string", "File path"),
+            line=("integer", "Number of the line to replace, counting from 1"),
+            new_string=("string", "The new text. It can span several lines"),
+            old_string=("string", "Exact text to replace, when line is not given"),
+        ))
+    tool_system.register(
+        "write_file", write_file, confirmable=True,
+        description="Create a file, or replace all of its content. The user is asked first.",
+        args_schema=_args(
+            ["path", "content"],
+            path=("string", "File path"),
+            content=("string", "The complete content of the file"),
+        ))
+    tool_system.register(
+        "exec", exec, confirmable=True,
+        description="Run a shell command and return its exit code, stdout and stderr. The user is asked first.",
+        args_schema=_args(
+            ["command"],
+            command=("string", "The command line to run"),
+            workdir=("string", "Directory to run it in. Default: the current directory"),
+            timeout=("integer", "Seconds before the command is stopped. Default 30"),
+        ))
+    tool_system.register(
+        "search_files", search_files,
+        description="Find lines containing a text in the files under a directory. "
+                    "Returns up to 50 matches with file and line number.",
+        args_schema=_args(
+            ["pattern"],
+            pattern=("string", "The text to look for (a regular expression if use_regex is true)"),
+            path=("string", "Directory to search. Default: the current directory"),
+            file_glob=("string", "Which files to search, e.g. *.js. Default *.py"),
+            use_regex=("boolean", "Treat pattern as a regular expression. Default false"),
+        ))
+    tool_system.register(
+        "find_files", find_files,
+        description="Find files by name under a directory. Returns up to 50 paths.",
+        args_schema=_args(
+            ["pattern"],
+            pattern=("string", "File name pattern, e.g. *.py or tests/test_*.py"),
+            path=("string", "Directory to search. Default: the current directory"),
+            use_regex=("boolean", "Treat pattern as a regular expression. Default false"),
+        ))
 
     # 测试工具
     tt = _get_test_tools()
-    tool_system.register("test_run", tt.test_run, confirmable=False,
-                        description="执行测试 (path, pattern, framework)")
-    tool_system.register("test_generate", tt.test_generate, confirmable=False,
-                        description="分析源码，准备生成测试")
+    tool_system.register(
+        "test_run", tt.test_run,
+        description="Run the project's tests and return the output with passed and failed counts. "
+                    "Detects pytest, unittest, jest or go test.",
+        args_schema=_args(
+            [],
+            path=("string", "Project directory. Default: the current directory"),
+            pattern=("string", "Test files to run. Default test_*.py"),
+            framework=("string", "auto, pytest, unittest, jest or go. Default auto"),
+        ))
+    tool_system.register(
+        "test_generate", tt.test_generate,
+        description="Get ready to write tests for a source file: returns its content, the test file path "
+                    "to use and hints for the framework. Then write the tests with write_file.",
+        args_schema=_args(
+            ["source"],
+            source=("string", "Path of the source file to test"),
+            target=("string", "Path for the test file. Default: derived from source, "
+                              "e.g. src/calculator.py -> tests/test_calculator.py"),
+            framework=("string", "Test framework. Default pytest"),
+        ))
 
 
 def register_tools() -> Dict[str, Callable]:

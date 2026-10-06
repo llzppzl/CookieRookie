@@ -23,6 +23,10 @@ class MockToolSystem:
     def is_confirmable(self, name):
         return self.confirmable_map.get(name, False)
 
+    def api_tools(self, names=None):
+        return [{"name": name, "description": "", "input_schema": {"type": "object", "properties": {}}}
+                for name in self.tools if names is None or name in names]
+
 
 class TestInteractiveAgent:
     def test_initialization(self):
@@ -44,7 +48,7 @@ class TestInteractiveAgent:
         agent = InteractiveAgent(mock_llm, mock_ts)
         tool_list = agent._build_tool_list()
         assert "read_file" in tool_list
-        assert "edit_file [需要确认]" in tool_list
+        assert "edit_file [needs confirmation]" in tool_list
 
     def test_pending_action_flow(self):
         from cookierookie.core import InteractiveAgent

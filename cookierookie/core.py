@@ -107,6 +107,16 @@ def approve_all(tool_name: str, args: dict):
     return "yes", ""
 
 
+def show_reply(response: dict, thought: str, summary: str) -> None:
+    """Print what the model said. Its raw text is shown only when it isn't the thought or the
+    summary, as with a reply in the text format."""
+    raw = response.get("raw") or ""
+    if raw and raw.strip() not in (thought, summary):
+        print(f"Raw response:\n{raw[:500]}")
+    if thought:
+        print(f"Thought: {thought}")
+
+
 def _expected_type(param):
     annotation = param.annotation
     if typing.get_origin(annotation) is typing.Union:  # Optional[int]
@@ -150,67 +160,20 @@ def coerce_args(fn, args: dict) -> dict:
     return coerced
 
 
-SYSTEM_PROMPT = """你是一个 Debug Agent。你的任务是通过工具自动定位并修复代码中的 bug。
+SYSTEM_PROMPT = """You are CookieRookie, a debugging agent. Find and fix the bug the user reports in the project in the current directory, using the tools you are given.
 
-## 工作流程
-1. 分析用户提供的 bug 报告
-2. 使用工具读取代码，分析错误
-3. 修复代码
-4. 运行验证
-5. 重复直到 bug 修复
+## How to work
+1. Read the bug report. Find the code involved with find_files and search_files, and read it with read_file.
+2. Fix it with the smallest change that works: edit_file for existing files, write_file for new ones.
+3. Check the fix, for example by running the code or its tests with exec.
+4. When the bug is fixed, or you can't get further, reply without calling a tool: say what was wrong and what you changed. That reply ends the run.
 
-## 可用工具
-- read_file(path, offset=1, limit=100): 读取文件
-- edit_file(path, line=行号, new_string='新内容'): 按行号修改（推荐）
-- edit_file(path, old_string="旧内容", new_string="新内容"): 字符串替换（容易出错）
-- exec(command, workdir=None, timeout=30): 执行命令
-- search_files(pattern, path=".", file_glob="*.py"): 搜索关键词
-- find_files(pattern, path="."): 查找文件
-
-## 输出格式（必须严格遵守！）
-
-严格按照这个格式输出，**不要有任何其他内容**：
-
-```
-thought: 你的推理过程（1-2句话）
-action: 工具名(参数1="值1", 参数2="值2")
-done: true/false
-summary: 修复总结（仅当done=true时）
-```
-
-### 重要：优先使用行号模式！
-
-当需要修改代码时，**优先使用行号模式**，避免字符串匹配问题：
-
-```
-# 推荐（按行号修改）
-action: edit_file(path="user_manager.py", line=19, new_string='    return user["city"]')
-
-# 注意：如果 new_string 内部包含双引号，请用单引号包裹整个字符串！
-action: edit_file(path="file.py", line=10, new_string='print("hello")')
-```
-
-### 示例
-```
-thought: 需要先读取文件查看代码内容
-action: read_file(path="examples/calculator.py")
-done: false
-
-thought: 发现bug在第15行，需要修改
-action: edit_file(path="examples/calculator.py", line=15, new_string='    rate = 0.1')
-done: false
-
-thought: 已修复，需要验证运行结果
-action: exec(command="python examples/calculator.py")
-done: false
-```
-
-## 重要规则
-1. action 后面必须紧跟括号和参数
-2. **修改代码时尽量用 line 模式**，不要用 old_string
-3. **new_string 如果包含双引号，请用单引号包裹！**
-4. 如果 done=true，action 那一行可以为空
-5. 绝对不要重复已经做过的操作！"""
+## Rules
+- Call one tool per reply, and say in a sentence or two why before the call.
+- The user is asked before each edit and command and can decline. If they do, the history shows it, often with what to do instead. Follow that, and don't try the same action again.
+- Don't repeat a step that is already in the history.
+- To change a line, read the file first and give its line number to edit_file.
+- Write your replies in the language of the bug report."""
 
 
 class DebugAgent:
@@ -231,17 +194,15 @@ class DebugAgent:
             
             # 1. LLM 推理
             response = self.llm.chat(context)
-            
-            # 调试：打印原始响应
-            print(f"Raw response:\n{response.get('raw', 'N/A')[:500]}")
-            
+
             # 2. 解析 action
             action = response.get("action")
             reasoning = response.get("thought", "")
             done = response.get("done", False)
             summary = response.get("summary", "")
-            
-            print(f"Thought: {reasoning}")
+
+            # 调试：打印原始响应 (with a tool call, the reply's text is the thought, shown below)
+            show_reply(response, reasoning, summary)
             
             if done:
                 return summary or "Bug fixed!"
@@ -296,7 +257,9 @@ class DebugAgent:
         return {
             "bug_report": bug_report,
             "history": [],
-            "system": SYSTEM_PROMPT
+            "system": SYSTEM_PROMPT,
+            # Only the tools debug mode runs (not the test tools)
+            "tools": tool_system.api_tools(list(self.tools)),
         }
 
 
@@ -313,74 +276,35 @@ def create_interactive_agent(llm_client, tool_system, max_iterations: int = 50) 
 class InteractiveAgent:
     """Interactive Agent - 支持用户确认的 Agent"""
 
-    SYSTEM_PROMPT = """你是一个 Interactive Coding Agent。你的任务是通过工具自动完成用户的编码请求。
+    SYSTEM_PROMPT = """You are CookieRookie, a coding agent. Do what the user asks in the project in the current directory, using the tools you are given.
 
-## 工作流程
-1. 分析用户请求
-2. 规划执行步骤
-3. 使用工具执行任务
-4. 对于危险操作（修改文件、执行命令等），系统会要求确认
-
-## 可用工具
+## Tools
 {tool_list}
 
-## 测试生成流程 (TDD)
-当用户要求生成测试时，按以下步骤：
+Tools marked [needs confirmation] change files or run commands. The user sees each such call before it runs, and can allow it, change its arguments or decline it.
 
-1. 调用 `test_generate(source="源码路径")` 获取源码内容和目标路径
-2. 分析返回的 `source_content` 和 `framework_hint`
-3. 调用 `write_file(path=目标路径, content="完整的测试代码")` 写入生成的测试
-4. 调用 `test_run()` 验证测试通过
+## How to work
+- Call one tool per reply, and say in a sentence or two why before the call.
+- Look before you change: find files with find_files or search_files instead of guessing paths, and read a file before you edit it.
+- If the user declines an action, the history shows it, often with what to do instead. Follow that, and don't try the same action again.
+- Don't repeat a step that is already in the history.
+- When the task is done, or you can't get further, reply without calling a tool: say in a few sentences what you did. That reply ends the task.
+- Write your replies in the language the user writes in.
 
-## 输出格式（必须严格遵守！）
+## Writing tests
+1. Call test_generate with the source file to get its content, the path for the test file and hints for the framework.
+2. Write the tests with write_file.
+3. Run them with test_run, and fix what fails.
 
-严格按照这个格式输出，**不要有任何其他内容**：
+## Plans
+When you are asked for a plan, don't call any tool. Reply in exactly this format:
 
-```
-thought: 你的推理过程（1-2句话）
-action: 工具名(参数1="值1", 参数2="值2")
-done: true/false
-summary: 总结（仅当done=true时）
-```
-
-## 重要规则
-1. action 后面必须紧跟括号和参数
-2. 如果工具标记为 [需要确认]，你需要等待用户确认后才能执行
-3. 如果 done=true，action 那一行可以为空
-4. 生成测试时，先调用 test_generate 获取源码，再生成测试代码并用 write_file 写入
-
-## 规划模式
-
-当用户输入复杂任务时，先规划再执行：
-
-1. 分析任务需要的步骤
-2. 使用 plan(task) 生成执行计划
-3. 展示计划给用户确认
-4. 用户确认后使用 execute_plan(plan) 执行
-
-## Plan 输出格式
-
-规划时返回：
-```
 plan: true
-summary: 任务总结（一句话）
+summary: the task in one sentence
 steps:
-  1. [tool_name] 步骤描述
-  2. [tool_name] 步骤描述
-  ...
-```
-
-## 执行格式
-
-执行时返回：
-```
-thought: 你的推理过程
-action: 工具名(参数)
-done: true/false
-summary: 总结
-```
-
-    """
+  1. [tool_name] what this step does
+  2. [tool_name] what this step does
+"""
 
     def __init__(self, llm_client, tool_system, max_iterations: int = 50, project_path: str = None):
         self.llm = llm_client
@@ -406,7 +330,7 @@ summary: 总结
         tools = self.tool_system.list_tools()
         tool_lines = []
         for name, tool_def in tools.items():
-            confirm_mark = " [需要确认]" if tool_def.confirmable else ""
+            confirm_mark = " [needs confirmation]" if tool_def.confirmable else ""
             desc = tool_def.description or ""
             tool_lines.append(f"- {name}{confirm_mark}: {desc}")
         return "\n".join(tool_lines)
@@ -424,7 +348,8 @@ summary: 总结
         context = {
             "task": task,
             "history": [],
-            "system": self._build_system_prompt()
+            "system": self._build_system_prompt(),
+            "tools": self.tool_system.api_tools(),
         }
 
         # 自动注入记忆
@@ -487,6 +412,7 @@ summary: 总结
             "task": pending.get("task", ""),
             "history": pending.get("history", []),
             "system": self._build_system_prompt(),
+            "tools": self.tool_system.api_tools(),
             "memory": pending.get("memory"),
         }
         context["history"].append({
@@ -545,7 +471,7 @@ summary: 总结
             Plan 字典，包含 steps 和 summary
         """
         context = {
-            "task": f"请为以下任务制定执行计划：{task}",
+            "task": f"Make a plan for this task, in the plan format:\n\n{task}",
             "system": self._build_system_prompt(),
             "history": [],
             "mode": "planning"
@@ -607,14 +533,12 @@ summary: 总结
             # LLM 推理
             response = self.llm.chat(context)
 
-            print(f"Raw response:\n{response.get('raw', 'N/A')[:500]}")
-
             action = response.get("action")
             reasoning = response.get("thought", "")
             done = response.get("done", False)
             summary = response.get("summary", "")
 
-            print(f"Thought: {reasoning}")
+            show_reply(response, reasoning, summary)
 
             if done:
                 return summary or "Task completed!"

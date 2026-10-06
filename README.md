@@ -86,6 +86,8 @@ See [.env.example](.env.example) for all options.
 | GLM | `glm-5` | `https://api.z.ai/api/anthropic` |
 | Anthropic | `claude-sonnet-4-6` | `https://api.anthropic.com` |
 
+CookieRookie gives the model its tools through the API's tool use (function calling), so the model has to support it. The Anthropic-compatible endpoints of the providers above do.
+
 ### Running from source
 
 ```bash
@@ -111,6 +113,15 @@ python -m pytest
 | `exit`, `quit` | Exit interactive mode |
 
 ## How It Works
+
+### Each Step
+
+1. CookieRookie sends the model your task, what has happened so far, and the tools it can call.
+2. The model answers with one tool call, or with a final answer when the task is done.
+3. Reading and searching run right away. Edits and commands are shown to you first.
+4. The result goes into the history for the next step.
+
+Tool calls arrive as JSON, so file content with quotes, backslashes or many lines is written exactly as the model wrote it.
 
 ### Planning Flow
 
@@ -214,14 +225,21 @@ def my_tool(param1: str) -> dict:
 tool_system.register(
     "my_tool",
     my_tool,
-    confirmable=True,  # Set True for dangerous operations
-    description="Description for LLM"
+    confirmable=True,  # True for tools that change files or run commands: the user is asked first
+    description="What the tool does, for the model",
+    args_schema={  # optional
+        "type": "object",
+        "properties": {"param1": {"type": "string", "description": "What param1 is"}},
+        "required": ["param1"],
+    },
 )
 ```
 
+The model sees the description and the argument schema. Without `args_schema`, the schema is built from the function's signature: parameters without a default are required, and their types come from the annotations. Without `description`, the first line of the docstring is used.
+
 ### Changing System Prompt
 
-Edit `SYSTEM_PROMPT` in `cookierookie/core.py` to customize agent behavior.
+Edit `SYSTEM_PROMPT` (debug mode) or `InteractiveAgent.SYSTEM_PROMPT` (interactive mode) in `cookierookie/core.py` to customize agent behavior.
 
 ## Architecture
 

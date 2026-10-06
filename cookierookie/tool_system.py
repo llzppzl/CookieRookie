@@ -2,8 +2,31 @@
 ToolSystem - 插件化工具注册表
 """
 
-from typing import Dict, Callable, Any, Optional
+import inspect
+import typing
+from typing import Dict, Callable, Any, List, Optional
 from dataclasses import dataclass
+
+
+JSON_TYPES = {str: "string", int: "integer", float: "number", bool: "boolean", list: "array", dict: "object"}
+
+
+def schema_from_signature(fn: Callable) -> Dict[str, Any]:
+    """Build a JSON Schema for a tool's arguments from its signature, for tools registered
+    without args_schema. Parameters without a default are required."""
+    properties, required = {}, []
+    for name, param in inspect.signature(fn).parameters.items():
+        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+            continue
+        annotation = param.annotation
+        if typing.get_origin(annotation) is typing.Union:  # Optional[str]
+            options = [a for a in typing.get_args(annotation) if a is not type(None)]
+            annotation = options[0] if len(options) == 1 else None
+        annotation = typing.get_origin(annotation) or annotation  # List[str] -> list
+        properties[name] = {"type": JSON_TYPES.get(annotation, "string")}
+        if param.default is param.empty:
+            required.append(name)
+    return {"type": "object", "properties": properties, "required": required}
 
 
 @dataclass
@@ -51,6 +74,20 @@ class ToolSystem:
         """检查工具是否需要确认"""
         tool = self._tools.get(name)
         return tool.confirmable if tool else False
+
+    def api_tools(self, names: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """The tools (all, or only names) as tool definitions for the Anthropic Messages API"""
+        specs = []
+        for tool in self._tools.values():
+            if names is not None and tool.name not in names:
+                continue
+            description = tool.description or (inspect.getdoc(tool.fn) or tool.name).splitlines()[0]
+            specs.append({
+                "name": tool.name,
+                "description": description,
+                "input_schema": tool.args_schema or schema_from_signature(tool.fn),
+            })
+        return specs
 
 
 # 全局实例
