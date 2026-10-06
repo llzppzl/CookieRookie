@@ -43,6 +43,9 @@ USER_DECISIONS = {
 # Long arguments (file content, replacement text) are shortened in the history
 ARG_PREVIEW_CHARS = 200
 
+# How much of a test run's output the model sees: the end, which has the failures and the counts
+TEST_OUTPUT_CHARS = 2000
+
 
 def _show_arg(value) -> str:
     """An argument of an earlier tool call, as the model sees it in the history. Strings are quoted
@@ -404,6 +407,19 @@ class LLMClient:
                             parts.append(f"  - {p}")
                         if count > max_items:
                             parts.append(f"  ... and {count - max_items} more.")
+
+                elif tool_name == "test_run":
+                    # The JSON view below would end before the failures and the counts, which come last
+                    counts = ", ".join(f"{key}: {result[key]}" for key in ("passed", "failed", "errors")
+                                       if result.get(key))
+                    parts.append(f" Result: {result.get('command') or 'the tests'} exited with code "
+                                 f"{result.get('returncode')}" + (f" ({counts})" if counts else "") + ".")
+                    output = ((result.get("stdout") or "") + (result.get("stderr") or "")).strip()
+                    if len(output) > TEST_OUTPUT_CHARS:
+                        parts.append(f"\nOutput (the last {TEST_OUTPUT_CHARS} characters):\n"
+                                     f"[cut off] ...{output[-TEST_OUTPUT_CHARS:]}")
+                    elif output:
+                        parts.append(f"\nOutput:\n{output}")
 
                 else:
                     # 其他工具：直接给出一个截断后的 JSON 视图，避免完全丢信息

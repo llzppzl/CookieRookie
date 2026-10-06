@@ -339,7 +339,8 @@ def register_base_tools() -> None:
         args_schema=_args(
             [],
             path=("string", "Project directory. Default: the current directory"),
-            pattern=("string", "Test files to run. Default test_*.py"),
+            pattern=("string", "Test file, directory or glob to run, e.g. tests/test_calc.py. "
+                               "Default: every test the framework finds"),
             framework=("string", "auto, pytest, unittest, jest or go. Default auto"),
         ))
     tool_system.register(

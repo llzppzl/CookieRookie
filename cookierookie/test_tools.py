@@ -2,10 +2,13 @@
 Test Tools - 测试执行和生成工具
 """
 
+import glob
 import os
 import re
+import shutil
 import subprocess
-from typing import Dict, Optional
+import sys
+from typing import Dict, List, Optional
 
 from .tools import write_file
 
@@ -42,7 +45,6 @@ def _detect_framework(path: str = ".") -> str:
 
     # 检查 test_*.py 文件内容
     test_pattern = os.path.join(path, "test_*.py")
-    import glob
     for test_file in glob.glob(test_pattern):
         with open(test_file, "r", encoding="utf-8") as f:
             content = f.read()
@@ -99,12 +101,39 @@ def _parse_errors(output: str) -> int:
     return 0
 
 
-def _test_run(path: str = None, pattern: str = "test_*.py", framework: str = "auto") -> dict:
+def _python(path: str) -> str:
+    """The Python to run a project's tests with: the project's virtualenv (.venv or venv) if it
+    has one, else python or python3 on PATH, else the Python running CookieRookie.
+    macOS has no "python" command, only python3."""
+    for venv in (".venv", "venv"):
+        for exe in (os.path.join("bin", "python"), os.path.join("Scripts", "python.exe")):
+            candidate = os.path.join(path, venv, exe)
+            if os.path.isfile(candidate):
+                return os.path.abspath(candidate)
+    return shutil.which("python") or shutil.which("python3") or sys.executable
+
+
+def _test_targets(path: str, pattern: Optional[str]) -> List[str]:
+    """The test files to pass the runner: none (it finds the tests itself), the file or directory
+    in pattern, or the files a glob in pattern matches.
+
+    The command runs without a shell, so a glob like test_*.py has to be expanded here.
+    Passed as is, pytest looks for a file literally named "test_*.py" and runs nothing.
+    """
+    if not pattern:
+        return []
+    if not any(c in pattern for c in "*?["):
+        return [pattern]
+    matches = sorted(glob.glob(os.path.join(path, pattern), recursive=True))
+    return [os.path.relpath(match, path) for match in matches]
+
+
+def _test_run(path: str = None, pattern: str = None, framework: str = "auto") -> dict:
     """执行测试 (内部实现)
 
     Args:
-        path: 测试路径 (默认当前目录)
-        pattern: 测试文件匹配模式
+        path: Project directory (default: the current directory)
+        pattern: Test file, directory or glob to run. Default: every test the framework finds
         framework: 测试框架 (auto/pytest/unittest/jest/go)
 
     Returns:
@@ -120,26 +149,46 @@ def _test_run(path: str = None, pattern: str = "test_*.py", framework: str = "au
     if path is None:
         path = "."
 
+    if not os.path.isdir(path):
+        return {"success": False, "error": f"Directory not found: {path}", "framework": framework}
+
+    # The pattern goes on the command line, so it must not be read as an option (-p loads a plugin)
+    if pattern and pattern.startswith("-"):
+        return {"success": False, "error": f"pattern must be a file, directory or glob, not an option: {pattern}",
+                "framework": framework}
+
     # 自动检测框架
     if framework == "auto":
         framework = _detect_framework(path)
 
-    try:
-        if framework == "pytest":
-            cmd = ["python", "-m", "pytest", pattern, "-v"]
-        elif framework == "unittest":
-            cmd = ["python", "-m", "unittest", "discover", "-s", path, "-p", pattern]
-        elif framework == "jest":
-            cmd = ["npx", "jest", pattern]
-        elif framework == "go":
-            cmd = ["go", "test", "./...", "-v"]
-        else:
-            return {
-                "success": False,
-                "error": f"Unknown framework: {framework}",
-                "framework": framework
-            }
+    # Before (kept for comparison): the pattern went to pytest as is. No shell expanded test_*.py,
+    # so pytest looked for a file of that name and ran nothing
+    # cmd = ["python", "-m", "pytest", pattern, "-v"]
+    if framework in ("pytest", "unittest"):
+        targets = _test_targets(path, pattern)
+        if pattern and not targets:
+            return {"success": False, "error": f"No files match {pattern} in {path}", "framework": framework}
 
+    if framework == "pytest":
+        cmd = [_python(path), "-m", "pytest", "-v"] + targets
+    elif framework == "unittest":
+        # cwd is already path, so discovery starts at "."
+        if targets:
+            cmd = [_python(path), "-m", "unittest", "-v"] + targets
+        else:
+            cmd = [_python(path), "-m", "unittest", "discover", "-v", "-s", ".", "-p", "test*.py"]
+    elif framework == "jest":
+        cmd = ["npx", "jest"] + ([pattern] if pattern else [])
+    elif framework == "go":
+        cmd = ["go", "test", "-v", pattern or "./..."]
+    else:
+        return {
+            "success": False,
+            "error": f"Unknown framework: {framework}",
+            "framework": framework
+        }
+
+    try:
         result = subprocess.run(
             cmd,
             capture_output=True,
@@ -154,16 +203,18 @@ def _test_run(path: str = None, pattern: str = "test_*.py", framework: str = "au
             "success": result.returncode == 0,
             "returncode": result.returncode,
             "framework": framework,
+            "command": " ".join(cmd),
             "stdout": result.stdout,
             "stderr": result.stderr,
             "passed": _parse_passed(output),
             "failed": _parse_failed(output),
             "errors": _parse_errors(output)
         }
-    except FileNotFoundError as e:
+    except FileNotFoundError:
+        # The directory exists (checked above), so the program is missing
         return {
             "success": False,
-            "error": f"File not found: {path}",
+            "error": f"{cmd[0]} was not found. Is {framework} installed?",
             "framework": framework
         }
     except Exception as e:
@@ -307,12 +358,13 @@ def _extract_imports(source_content: str) -> list:
 
 
 # Public API - wrapper functions for external use
-def test_run(path: str = None, pattern: str = "test_*.py", framework: str = "auto") -> dict:
+def test_run(path: str = None, pattern: str = None, framework: str = "auto") -> dict:
     """执行测试
 
     Args:
-        path: 测试路径 (默认当前目录)
-        pattern: 测试文件匹配模式
+        path: Project directory (default: the current directory)
+        pattern: Test file, directory or glob to run, e.g. tests/test_calc.py.
+            Default: every test the framework finds
         framework: 测试框架 (auto/pytest/unittest/jest/go)
 
     Returns:

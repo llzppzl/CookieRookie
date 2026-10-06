@@ -173,6 +173,22 @@ def test_history_shortens_long_arguments_and_shows_the_users_answer():
     assert "### Step 1 (the user declined it)" in message
 
 
+def test_history_shows_the_end_of_a_test_run():
+    output = "tests/test_calc.py::test_ok PASSED\n" * 200 + \
+        "FAILED tests/test_calc.py::test_add - assert 3 == 4\n1 failed, 200 passed in 0.52s\n"
+    message = message_after({
+        "action": {"tool": "test_run", "args": {}},
+        "result": {"success": False, "returncode": 1, "framework": "pytest", "command": "python -m pytest -v",
+                   "stdout": output, "stderr": "", "passed": 200, "failed": 1, "errors": 0},
+        "thought": "", "iteration": 1,
+    })
+
+    assert "python -m pytest -v exited with code 1 (passed: 200, failed: 1)." in message
+    assert "assert 3 == 4" in message
+    assert "1 failed, 200 passed" in message
+    assert len(message) < 3000
+
+
 # ---------- schemas ----------
 
 def test_schema_from_signature():
