@@ -345,7 +345,7 @@ def load_config():
 
 
 def main():
-    # 获取 bug 描述；--yes / -y 表示修改文件和执行命令前不再询问
+    # Bug description; --yes / -y runs edits and commands without asking
     args = sys.argv[1:]
     approve = any(a in ("--yes", "-y") for a in args)
     args = [a for a in args if a not in ("--yes", "-y")]

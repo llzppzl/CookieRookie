@@ -1,11 +1,11 @@
-"""agent/test_debug_confirmation.py - Debug 模式在修改/执行前询问用户"""
+"""agent/test_debug_confirmation.py - debug mode asks before edits and commands"""
 import builtins
 
 from agent.core import DebugAgent, approve_all, ask_in_terminal, preview_action
 
 
 class ScriptedLLM:
-    """按顺序返回预设的回复，并记录每次收到的 context"""
+    """Returns scripted replies in order and records the context of each call"""
 
     def __init__(self, replies):
         self.replies = list(replies)

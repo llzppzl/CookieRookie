@@ -10,14 +10,14 @@ from .tools import register_tools
 from .tool_system import tool_system
 
 
-# ========== Debug 模式：执行危险操作前先询问 ==========
+# ========== Debug mode: ask before risky actions ==========
 
 PREVIEW_LINES = 20
 
 
 def run_tool(fn, args: dict) -> dict:
-    """执行工具。工具抛异常（比如模型编了一个不存在的参数）时，把错误作为结果交给模型，
-    让它修正调用，而不是让整个运行崩掉。"""
+    """Run a tool. If it raises (for example on an argument the model made up), the model gets
+    the error as the result and can fix its call, instead of the whole run crashing."""
     try:
         return fn(**args)
     except Exception as e:
@@ -25,7 +25,7 @@ def run_tool(fn, args: dict) -> dict:
 
 
 def declined(reason: str = "") -> dict:
-    """用户拒绝某个修改或命令时，模型看到的结果"""
+    """The result the model sees when the user declines an edit or command."""
     error = "The user declined this action."
     if reason:
         error += f" They said: {reason}"
@@ -50,7 +50,7 @@ def _line_of(path: str, line) -> Optional[str]:
 
 
 def preview_action(tool_name: str, args: dict) -> str:
-    """展示修改或命令会做什么，让用户在执行前决定"""
+    """Show what an edit or command will do, so the user can decide before it runs."""
     path = args.get("path", "")
     if tool_name == "exec":
         details = ", ".join(f"{k}={args[k]}" for k in ("workdir", "timeout") if args.get(k))
@@ -70,10 +70,10 @@ def preview_action(tool_name: str, args: dict) -> str:
 
 
 def ask_in_terminal(tool_name: str, args: dict):
-    """展示修改或命令，询问是否执行。
+    """Show an edit or command and ask whether to run it.
 
-    返回 (answer, reason)：answer 为 "yes"、"all"（这一步和之后的都允许）、"no" 或 "quit"。
-    输入 y / a / q 以外的文字算拒绝，并把这段话转告给模型。
+    Returns (answer, reason): answer is "yes", "all" (yes to this and everything after it),
+    "no" or "quit". Anything typed other than y, a or q declines, and is passed to the model.
     """
     print("\n" + preview_action(tool_name, args))
     try:
@@ -94,7 +94,7 @@ def ask_in_terminal(tool_name: str, args: dict):
 
 
 def approve_all(tool_name: str, args: dict):
-    """不询问，全部允许（python main.py --yes "bug"）"""
+    """Run every edit and command without asking (python main.py --yes "bug")."""
     return "yes", ""
 
 
@@ -163,8 +163,8 @@ done: false
 
 class DebugAgent:
     def __init__(self, llm_client, max_iterations: int = 10, ask=None):
-        """ask(tool_name, args) 在每个修改/命令执行前做决定，返回 (answer, reason)，
-        默认是 ask_in_terminal；传 approve_all 则不询问。"""
+        """ask(tool_name, args) decides on each edit and command before it runs and returns
+        (answer, reason), like ask_in_terminal (the default). Pass approve_all to never ask."""
         self.llm = llm_client
         self.tools = register_tools()
         self.max_iterations = max_iterations
@@ -208,7 +208,7 @@ class DebugAgent:
             if tool_name not in self.tools:
                 return f"Unknown tool: {tool_name}"
             
-            # 修改文件、执行命令前先问用户
+            # Edits and commands run only if the user says yes
             answer, reason = "yes", ""
             if tool_system.is_confirmable(tool_name):
                 answer, reason = self.ask(tool_name, tool_args)
