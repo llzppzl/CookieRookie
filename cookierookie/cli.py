@@ -408,6 +408,17 @@ class LLMClient:
                         if count > max_items:
                             parts.append(f"  ... and {count - max_items} more.")
 
+                elif tool_name == "git_diff" and success:
+                    diff = result.get("diff") or ""
+                    if not diff.strip():
+                        parts.append(" Result: no changes to tracked files. New files don't show in "
+                                     "git diff; git_status lists them.")
+                    else:
+                        max_chars = 3000
+                        parts.append(f" Result: {len(diff.splitlines())} lines of diff.")
+                        parts.append("\n```diff\n" + diff[:max_chars]
+                                     + ("\n... [cut off]" if len(diff) > max_chars else "") + "\n```")
+
                 elif tool_name == "test_run":
                     # The JSON view below would end before the failures and the counts, which come last
                     counts = ", ".join(f"{key}: {result[key]}" for key in ("passed", "failed", "errors")

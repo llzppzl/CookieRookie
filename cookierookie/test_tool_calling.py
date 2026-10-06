@@ -189,6 +189,20 @@ def test_history_shows_the_end_of_a_test_run():
     assert len(message) < 3000
 
 
+def test_history_shows_a_long_diff():
+    diff = "diff --git a/app.py b/app.py\n@@ -1,40 +1,40 @@\n" + "".join(
+        f"-value_{n} = {n}\n+value_{n} = {n * 10}\n" for n in range(40))
+    message = message_after({
+        "action": {"tool": "git_diff", "args": {}},
+        "result": {"success": True, "diff": diff, "returncode": 0, "stderr": ""},
+        "thought": "", "iteration": 1,
+    })
+
+    # Far past the 800 characters of the JSON view other results get
+    assert "+value_39 = 390" in message
+    assert "```diff" in message
+
+
 # ---------- schemas ----------
 
 def test_schema_from_signature():
@@ -229,7 +243,8 @@ def test_a_tool_registered_without_a_schema_gets_one_from_its_signature():
 
 
 @pytest.mark.parametrize("name", ["read_file", "edit_file", "write_file", "exec", "search_files",
-                                  "find_files", "test_run", "test_generate"])
+                                  "find_files", "test_run", "test_generate", "git_status", "git_diff",
+                                  "git_log", "git_branch", "git_commit", "git_checkout"])
 def test_each_tool_schema_matches_the_function(name):
     tool = tool_system.get(name)
     schema = next(spec for spec in tool_system.api_tools() if spec["name"] == name)["input_schema"]

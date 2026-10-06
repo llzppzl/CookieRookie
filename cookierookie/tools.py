@@ -9,6 +9,7 @@ import glob
 import fnmatch
 from typing import Dict, Callable, List
 from .tool_system import tool_system
+from . import git_tools
 
 # 延迟导入避免循环依赖
 def _get_test_tools():
@@ -353,6 +354,52 @@ def register_base_tools() -> None:
             target=("string", "Path for the test file. Default: derived from source, "
                               "e.g. src/calculator.py -> tests/test_calculator.py"),
             framework=("string", "Test framework. Default pytest"),
+        ))
+
+    # Git tools, in the current directory. Committing and switching branches ask first
+    tool_system.register(
+        "git_status", git_tools.git_status,
+        description="List the files with uncommitted changes, including new files, in the git repository.",
+        args_schema=_args([]))
+    tool_system.register(
+        "git_diff", git_tools.git_diff,
+        description="Show the uncommitted changes to tracked files (git diff), for all files or one path.",
+        args_schema=_args(
+            [],
+            path=("string", "Only show the changes to this file or directory"),
+        ))
+    tool_system.register(
+        "git_log", git_tools.git_log,
+        description="List recent commits with hash, subject, author and date.",
+        args_schema=_args(
+            [],
+            limit=("integer", "How many commits. Default 10"),
+        ))
+    tool_system.register(
+        "git_branch", git_tools.git_branch,
+        description="Show the current branch, and all branches with list_branches.",
+        args_schema=_args(
+            [],
+            list_branches=("boolean", "Also list all branches. Default false"),
+        ))
+    commit_args = _args(
+        ["message"],
+        message=("string", "The commit message"),
+        files=("array", "Files to stage and commit. Default: all changes"),
+    )
+    commit_args["properties"]["files"]["items"] = {"type": "string"}
+    tool_system.register(
+        "git_commit", git_tools.git_commit, confirmable=True,
+        description="Stage files and commit them. Without files, every change is staged (git add .). "
+                    "The user is asked first.",
+        args_schema=commit_args)
+    tool_system.register(
+        "git_checkout", git_tools.git_checkout, confirmable=True,
+        description="Switch to a branch, or create one and switch to it. The user is asked first.",
+        args_schema=_args(
+            ["branch"],
+            branch=("string", "The branch name"),
+            create=("boolean", "Create the branch first. Default false"),
         ))
 
 

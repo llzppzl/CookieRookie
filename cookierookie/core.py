@@ -75,6 +75,14 @@ def preview_action(tool_name: str, args: dict) -> str:
         content = str(args.get("content", ""))
         verb = "Overwrite" if os.path.exists(path) else "Create"
         return f"{verb} {path} ({len(content.splitlines())} lines):\n{_prefixed('+ ', content)}"
+    if tool_name == "git_commit":
+        files = args.get("files")
+        files = [files] if isinstance(files, str) else files
+        staged = ", ".join(files) if files else "all changes (git add .)"
+        return f"Commit {staged} with the message:\n{_prefixed('  ', args.get('message', ''))}"
+    if tool_name == "git_checkout":
+        verb = "Create and switch to" if args.get("create") else "Switch to"
+        return f"{verb} branch {args.get('branch', '')}"
     return f"{tool_name}(" + ", ".join(f"{k}={v!r}" for k, v in args.items()) + ")"
 
 

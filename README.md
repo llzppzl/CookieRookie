@@ -137,12 +137,14 @@ Tool calls arrive as JSON, so file content with quotes, backslashes or many line
 
 ### Available Tools
 
-| Category | Tools |
-|----------|-------|
-| File | read_file, edit_file, write_file, search_files, find_files |
-| Execute | exec |
-| Git | git_status, git_diff, git_commit, git_branch, git_log, git_checkout |
-| Test | test_run, test_generate |
+| Category | Run on their own | Ask you first |
+|----------|------------------|---------------|
+| File | read_file, search_files, find_files | edit_file, write_file |
+| Execute | | exec |
+| Test | test_run, test_generate | |
+| Git | git_status, git_diff, git_log, git_branch | git_commit, git_checkout |
+
+All tools work in the directory you started CookieRookie in. `test_run` finds the tests itself and uses the project's `.venv` or `venv` if there is one. Debug mode uses the file tools and `exec`.
 
 ## Project Structure
 
