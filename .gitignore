@@ -3,3 +3,4 @@ docs/coding-agent-report.md
 build/
 *.egg-info/
 __pycache__/
+.venv/

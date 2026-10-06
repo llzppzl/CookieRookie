@@ -78,7 +78,10 @@ See [.env.example](.env.example) for all options.
 ```bash
 git clone https://github.com/llzppzl/CookieRookie.git
 cd CookieRookie
-pip install -e .
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip   # installing with -e needs pip 21.3 or newer
+pip install -e . pytest
 python -m pytest
 ```
 
