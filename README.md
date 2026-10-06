@@ -32,7 +32,7 @@ cd path/to/your-project
 cookierookie
 ```
 
-CookieRookie works on the directory you start it in. Reading and searching run automatically; editing files and running commands wait for your `/confirm`.
+CookieRookie works on the directory you start it in. Reading and searching run on their own. Before any file edit or shell command, in either mode, it shows you the change and waits for your answer.
 
 ## Two Modes
 
@@ -51,6 +51,17 @@ cookierookie
 ```bash
 cookierookie "Your bug description here"
 ```
+
+Before each edit or command, debug mode shows it and asks:
+
+```
+Edit app/user.py, line 19:
+- return user["name"]
++ return user.get("name", "")
+Allow? [y]es / [N]o / [a]ll / [q]uit, or tell the agent what to do instead:
+```
+
+`a` allows everything for the rest of the run. Pressing Enter or typing `n` declines. You can also type what to do instead, and the agent gets your words as feedback. To skip the questions, for example in a script, run `cookierookie --yes "..."`.
 
 ## Configuration
 
@@ -91,10 +102,10 @@ python -m pytest
 | Command | Description |
 |---------|-------------|
 | `help` | Show help information |
-| `/confirm` | Confirm and execute pending action |
-| `/reject` | Reject and ask agent to replan |
-| `/edit key=value` | Modify action parameters |
-| `/status` | Show pending action status |
+| `/confirm` | Run the pending edit or command |
+| `/reject [what to do instead]` | Don't run it. With a reason, the agent tries another way on the same task; without one, the task stops |
+| `/edit key=value ...` | Change some of the pending action's arguments, then run it. Quote values with spaces: `/edit command="python -m pytest -q"` |
+| `/status` | Show the pending action |
 | `/plan` | View current execution plan |
 | `/skip N` | Skip step N in the plan |
 | `exit`, `quit` | Exit interactive mode |

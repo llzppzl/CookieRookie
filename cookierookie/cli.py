@@ -5,10 +5,12 @@ CookieRookie 命令行入口
 用法：
     cookierookie                      交互模式（在当前目录的项目上工作）
     cookierookie "bug 描述"            Debug 模式
+    cookierookie --yes "bug 描述"      Debug 模式，修改文件和执行命令前不再询问
 """
 
+import argparse
 import os
-import sys
+import shlex
 import json
 import re
 from pathlib import Path
@@ -16,6 +18,7 @@ from pathlib import Path
 import requests
 
 from cookierookie import DebugAgent
+from cookierookie.core import approve_all
 
 
 # 仓库根目录：从源码直接运行时，兼容旧的 <repo>/.env 配置
@@ -62,13 +65,16 @@ class LLMClient:
             "system": system_prompt
         }
         
-        response = requests.post(
-            f"{self.base_url}/v1/messages",
-            headers=headers,
-            json=data,
-            timeout=60
-        )
-        
+        try:
+            response = requests.post(
+                f"{self.base_url}/v1/messages",
+                headers=headers,
+                json=data,
+                timeout=60
+            )
+        except requests.RequestException as e:
+            return {"action": None, "error": f"Could not reach {self.base_url}: {e}", "raw": "", "fatal": True}
+
         if response.status_code != 200:
             return {"action": None, "error": f"API error: {response.status_code} - {response.text[:500]}",
                     "raw": response.text, "fatal": True}
@@ -418,14 +424,8 @@ def print_missing_key_help():
     print("See .env.example in the repository for all options.")
 
 
-def main():
-    # 获取 bug 描述
-    bug_report = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("DEBUG_BUG_REPORT", "")
-    
-    if not bug_report:
-        print(USAGE)
-        return
-    
+def main(bug_report: str, yes: bool = False):
+    """Debug 模式。yes=True 时修改文件和执行命令前不询问"""
     # 加载配置
     config = load_config()
     
@@ -442,14 +442,36 @@ def main():
         config["base_url"],
         config["max_tokens"],
     )
-    agent = DebugAgent(llm_client)
-    
+    agent = DebugAgent(llm_client, ask=approve_all if yes else None)
+
     # 运行
     print(f"Starting Debug Agent ({config['model']})...")
-    print(f"Bug: {bug_report}\n")
-    
-    result = agent.run(bug_report)
+    print(f"Bug: {bug_report}")
+    if yes:
+        print("--yes: edits and commands run without asking.")
+    else:
+        print("You'll be asked before each file edit or command.")
+    print()
+
+    try:
+        result = agent.run(bug_report)
+    except KeyboardInterrupt:
+        print("\nInterrupted")
+        return
     print(f"\n=== Final Result ===\n{result}")
+
+
+def parse_edit_args(text: str) -> dict:
+    """Parse what follows /edit: key=value pairs. Quote values that contain spaces."""
+    changes = {}
+    for part in shlex.split(text):
+        key, sep, value = part.partition("=")
+        if not sep or not key.isidentifier():
+            raise ValueError(f"expected key=value, got {part!r}")
+        changes[key] = value
+    if not changes:
+        raise ValueError("give at least one key=value")
+    return changes
 
 
 def interactive_main():
@@ -506,23 +528,23 @@ def interactive_main():
                 continue
 
             if user_input.startswith("/edit"):
-                parts = user_input[5:].strip()
-                modifications = {}
-                for part in parts.split():
-                    if "=" in part:
-                        k, v = part.split("=", 1)
-                        modifications[k] = v
-                if modifications and agent.pending_action:
-                    result = agent.edit_and_confirm(modifications)
-                    print(f"\n{result}\n")
-                else:
-                    print("Invalid /edit usage or no pending action")
+                if not agent.pending_action:
+                    print("No pending action to edit")
+                    continue
+                try:
+                    changes = parse_edit_args(user_input[len("/edit"):])
+                except ValueError as e:
+                    print(f'Invalid /edit: {e}. Example: /edit command="python -m pytest -q"')
+                    continue
+                result = agent.edit_and_confirm(changes)
+                print(f"\n{result}\n")
                 continue
 
             if user_input == "/status":
-                print(f"Pending action: {agent.pending_action is not None}")
                 if agent.pending_action:
-                    print(f"Tool: {agent.pending_action['action']['tool']}")
+                    agent._show_pending_action()
+                else:
+                    print("No pending action")
                 continue
 
             if user_input == "/plan":
@@ -549,26 +571,26 @@ def interactive_main():
 
             if user_input in ["/help", "/h", "help"]:
                 print("""
-CookieRookie Coding Agent - 可用命令
+CookieRookie Coding Agent
 
-任务输入:
-  直接输入任务描述，Agent 会自动执行
+Type a task and the agent works on it. Reading and searching run on their own;
+each file edit or command waits for one of these:
 
-交互命令:
-  /confirm          确认执行当前待确认的操作
-  /reject           拒绝当前待确认的操作，让 Agent 重新规划
-  /edit key=value   修改待确认操作的参数后执行
-  /status           查看当前待确认操作的状态
-  /plan             查看当前计划
-  /skip <step>      跳过指定步骤
+  /confirm                      Run it
+  /reject [what to do instead]  Don't run it. With a reason, the agent tries another way;
+                                without one, the task stops
+  /edit key=value ...           Change some of its arguments, then run it,
+                                e.g. /edit command="python -m pytest -q"
+  /status                       Show what is waiting
 
-退出:
-  exit, quit        退出交互模式
+  /plan                         Show the current plan
+  /skip <step>                  Skip a step of the plan
+  exit, quit                    Leave
 
-示例:
-  > 帮我写一个计算器模块
+Examples:
+  > write a calculator module with add and divide
   > 为 src/calculator.py 生成测试
-  > 修复登录功能的 bug
+  > fix the login bug in auth.py
 """)
                 continue
 
@@ -588,23 +610,32 @@ CookieRookie Coding Agent - 可用命令
             print(f"Error: {e}")
 
 
-USAGE = """Usage:
-  cookierookie                    Start interactive mode in the current directory
-  cookierookie "bug description"  Debug mode: locate and fix a bug
-  cookierookie --help             Show this message"""
+def parse_args(argv=None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="cookierookie",
+        description="An AI coding agent that works on the project in the current directory. "
+                    "Without a bug description it starts interactive mode.",
+    )
+    parser.add_argument("bug", nargs="?", help="debug mode: describe the bug to find and fix")
+    parser.add_argument("-y", "--yes", action="store_true",
+                        help="debug mode: edit files and run commands without asking first")
+    parser.add_argument("--interactive", action="store_true", help=argparse.SUPPRESS)  # same as no arguments
+    args = parser.parse_args(argv)
+
+    if not args.interactive and not args.bug:
+        args.bug = os.environ.get("DEBUG_BUG_REPORT") or None
+    if args.yes and (args.interactive or not args.bug):
+        parser.error('--yes only applies to debug mode, e.g. cookierookie --yes "the bug"')
+    return args
 
 
 def run():
     """命令行入口（pyproject.toml 中的 cookierookie 命令）"""
-    args = sys.argv[1:]
-    if args and args[0] in ("-h", "--help"):
-        print(USAGE)
-    elif args and args[0] == "--interactive":
-        interactive_main()
-    elif not args and not os.environ.get("DEBUG_BUG_REPORT"):
+    args = parse_args()
+    if args.interactive or not args.bug:
         interactive_main()
     else:
-        main()
+        main(args.bug, args.yes)
 
 
 if __name__ == "__main__":
