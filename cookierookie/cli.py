@@ -571,6 +571,12 @@ def parse_edit_args(text: str) -> dict:
     return changes
 
 
+def show(result: str) -> None:
+    # "awaiting_confirmation": the pending action and how to answer it are already on screen
+    if result != "awaiting_confirmation":
+        print(f"\n{result}\n")
+
+
 def interactive_main():
     """交互模式入口"""
     config = load_config()
@@ -597,7 +603,6 @@ def interactive_main():
         config["max_tokens"],
     )
     agent = create_interactive_agent(llm_client, tool_system)
-    agent.current_plan = None
 
     while True:
         try:
@@ -609,19 +614,16 @@ def interactive_main():
             if user_input.lower() in ["exit", "quit"]:
                 break
 
-            if user_input == "/confirm":
-                if agent.pending_action:
-                    result = agent.confirm()
-                    print(f"\n{result}\n")
-                else:
-                    print("No pending action")
+            # "/plan add tests" -> "/plan", "add tests"
+            command, _, rest = user_input.partition(" ")
+            rest = rest.strip()
+
+            if command == "/confirm":
+                show(agent.confirm())
                 continue
 
-            if user_input.startswith("/reject"):
-                parts = user_input.split(" ", 1)
-                instructions = parts[1] if len(parts) > 1 else None
-                result = agent.reject(instructions)
-                print(f"\n{result}\n")
+            if command == "/reject":
+                show(agent.reject(rest or None))
                 continue
 
             if user_input.startswith("/edit"):
@@ -640,30 +642,28 @@ def interactive_main():
             if user_input == "/status":
                 if agent.pending_action:
                     agent._show_pending_action()
-                else:
-                    print("No pending action")
+                if agent.current_plan:
+                    print(f"\n{agent.show_plan()}\n")
+                if not agent.pending_action and not agent.current_plan:
+                    print("Nothing is waiting.")
                 continue
 
-            if user_input == "/plan":
-                if hasattr(agent, 'current_plan') and agent.current_plan:
-                    formatted = agent._format_plan(agent.current_plan)
-                    print(f"\n{formatted}\n")
+            if command == "/plan":
+                if not rest:
+                    print(f"\n{agent.show_plan()}\n")
+                elif agent.pending_action:
+                    # Only one thing waits at a time, so it's clear what /confirm answers
+                    print(f"{agent.pending_action['tool_name']} is still waiting. "
+                          "Answer it with /confirm or /reject first, then make the plan.")
                 else:
-                    print("No plan available. Enter a task first.")
+                    print(f"\n{agent.propose_plan(rest)}\n")
                 continue
 
-            if user_input.startswith("/skip"):
-                parts = user_input.split()
-                if len(parts) > 1:
-                    try:
-                        step_num = int(parts[1])
-                        if hasattr(agent, 'skip_step'):
-                            result = agent.skip_step(step_num)
-                            print(f"\n{result}\n")
-                        else:
-                            print("Skip not supported")
-                    except ValueError:
-                        print("Invalid step number")
+            if command == "/skip":
+                if not rest.isdigit():
+                    print("Usage: /skip N, e.g. /skip 2 leaves out step 2 of the plan")
+                    continue
+                print(f"\n{agent.skip_step(int(rest))}\n")
                 continue
 
             if user_input in ["/help", "/h", "help"]:
@@ -680,25 +680,25 @@ each file edit or command waits for one of these:
                                 e.g. /edit command="python -m pytest -q"
   /status                       Show what is waiting
 
-  /plan                         Show the current plan
-  /skip <step>                  Skip a step of the plan
+To see the steps before anything runs, ask for a plan:
+
+  /plan <task>                  Make a plan for the task. Nothing runs yet
+  /skip N                       Leave step N out of the plan
+  /confirm                      Run the plan. Its edits and commands still wait for you
+  /reject [what to change]      Change the plan as you say; without a reason, drop it
+  /plan                         Show the plan again
+
   exit, quit                    Leave
 
 Examples:
   > write a calculator module with add and divide
   > 为 src/calculator.py 生成测试
-  > fix the login bug in auth.py
+  > /plan add a divide function to calc.py, with tests
 """)
                 continue
 
             # 普通任务
-            result = agent.run(user_input)
-
-            if result == "awaiting_confirmation":
-                # 等待用户在下一轮确认
-                pass
-            else:
-                print(f"\n{result}\n")
+            show(agent.run(user_input))
 
         except KeyboardInterrupt:
             print("\nInterrupted")

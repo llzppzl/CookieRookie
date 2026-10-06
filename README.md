@@ -7,7 +7,7 @@ An autonomous AI coding agent that understands your codebase, writes code, gener
 - 🤖 **LLM-Powered** - Uses any Anthropic-compatible API (Minimax, DeepSeek, Kimi, etc.)
 - 🛠️ **Tool Execution** - Read, edit, write files; execute commands; run tests
 - 🔧 **Auto-Debug** - Automatically reads, analyzes, and fixes bugs
-- 📋 **Task Planning** - Multi-step plans with full visibility and control
+- 📋 **Plans** - `/plan` shows the steps before anything runs; leave some out or have them changed, then run it
 - 💾 **Project Memory** - Learns your project structure automatically
 - 🔄 **Interactive Confirmation** - You confirm dangerous actions before execution
 
@@ -44,6 +44,7 @@ cookierookie
 > 帮我写一个计算器模块
 > 为 src/calculator.py 生成测试
 > 修复登录功能的 bug
+> /plan add a divide function to calc.py, with a test
 ```
 
 ### Debug Mode
@@ -104,12 +105,13 @@ python -m pytest
 | Command | Description |
 |---------|-------------|
 | `help` | Show help information |
-| `/confirm` | Run the pending edit or command |
-| `/reject [what to do instead]` | Don't run it. With a reason, the agent tries another way on the same task; without one, the task stops |
+| `/confirm` | Run the pending edit or command. With none waiting, run the plan |
+| `/reject [what to do instead]` | Don't run it. With a reason, the agent tries another way on the same task; without one, the task stops. For a plan: change it as you say, or without a reason drop it |
 | `/edit key=value ...` | Change some of the pending action's arguments, then run it. Quote values with spaces: `/edit command="python -m pytest -q"` |
-| `/status` | Show the pending action |
-| `/plan` | View current execution plan |
-| `/skip N` | Skip step N in the plan |
+| `/status` | Show what is waiting: the pending action and the plan |
+| `/plan <task>` | Make a plan for the task. Nothing runs until you `/confirm` it |
+| `/plan` | Show the plan again |
+| `/skip N` | Leave step N out of the plan |
 | `exit`, `quit` | Exit interactive mode |
 
 ## How It Works
@@ -123,17 +125,13 @@ python -m pytest
 
 Tool calls arrive as JSON, so file content with quotes, backslashes or many lines is written exactly as the model wrote it.
 
-### Planning Flow
+### Plans
 
-```
-1. You input a task
-2. Agent plans multi-step execution
-3. Agent shows you the plan
-4. You confirm or modify
-5. Agent executes step by step
-   - Safe steps run automatically
-   - Dangerous steps (edit, exec) pause for confirmation
-```
+A task you type starts right away. To see the steps first, use `/plan <task>`:
+
+1. The model writes a plan. Nothing runs, and the model gets no tools for it.
+2. You read it. `/skip N` leaves step N out, `/reject <what to change>` gets a new plan with your change, and `/reject` alone drops it.
+3. `/confirm` hands the plan to the agent, which carries it out step by step. Each edit and command in it still waits for your `/confirm`, as usual. If what the agent finds shows that a step is wrong, it does what the task needs instead and says why.
 
 ### Available Tools
 
@@ -174,7 +172,7 @@ CookieRookie/
 ```bash
 cookierookie
 > 帮我写一个用户管理模块
-# Agent plans and asks for confirmation
+# The agent looks at the project, then shows each file it wants to write and waits
 > /confirm
 ```
 
@@ -194,19 +192,30 @@ cookierookie "calculator.py returns wrong result when dividing by zero"
 
 ### Plan Mode
 
-```bash
+```
 cookierookie
-> 帮我重构登录模块，添加测试
+> /plan add a divide function to calc.py, with a test
+Plan: Add divide() to calc.py, with a test
 
-## 执行计划
+1. [read_file] Read calc.py
+2. [edit_file] Add divide(a, b)  (asks you first)
+3. [write_file] Create tests/test_divide.py  (asks you first)
+4. [test_run] Run tests/test_divide.py
 
-1. [read_file] 读取 src/auth.py
-2. [git_status] 查看当前状态
-3. [write_file] 创建 tests/test_auth.py
-4. [edit_file] 重构 login() 函数
-5. [test_run] 运行测试验证
+/confirm to run it | /skip N to leave out step N | /reject [what to change]
+> /reject it should raise ZeroDivisionError for 0
+Plan: Add divide() to calc.py, raising ZeroDivisionError for 0, with tests
 
+1. [read_file] Read calc.py
+2. [edit_file] Add divide(a, b), raising ZeroDivisionError when b is 0  (asks you first)
+3. [write_file] Create tests/test_divide.py, with a test for b = 0  (asks you first)
+4. [git_status] Show what changed
+5. [test_run] Run tests/test_divide.py
+
+/confirm to run it | /skip N to leave out step N | /reject [what to change]
+> /skip 4
 > /confirm
+# Reads calc.py, shows the edit and waits for /confirm, shows the test file and waits, then runs the tests
 ```
 
 ## Extending

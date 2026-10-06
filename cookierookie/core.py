@@ -281,6 +281,11 @@ def create_interactive_agent(llm_client, tool_system, max_iterations: int = 50) 
     return InteractiveAgent(llm_client, tool_system, max_iterations)
 
 
+PLAN_HINT = "/confirm to run it | /skip N to leave out step N | /reject [what to change]"
+
+NO_PLAN = "No plan. Make one with /plan <task>."
+
+
 class InteractiveAgent:
     """Interactive Agent - 支持用户确认的 Agent"""
 
@@ -321,6 +326,8 @@ steps:
         self.pending_action = None
         self.user_modifications = None
         self.project_path = project_path
+        # The plan from plan(), until it is run (confirm) or dropped (reject)
+        self.current_plan = None
 
         # 初始化记忆
         if project_path:
@@ -368,16 +375,24 @@ steps:
         return context
 
     def confirm(self) -> str:
-        """用户确认，执行 pending action"""
-        if not self.pending_action:
-            return "No pending action to confirm"
-        return self._run_pending(self.pending_action["tool_args"], "confirmed")
+        """Say yes to what is waiting: the pending edit or command, or else the plan."""
+        if self.pending_action:
+            return self._run_pending(self.pending_action["tool_args"], "confirmed")
+        if self.current_plan:
+            return self.execute_plan()
+        return "Nothing to confirm."
 
     def reject(self, new_instructions: str = None) -> str:
-        """Decline the pending action. With instructions, the agent carries on with the same task
-        and reads them as feedback; without, the task stops."""
+        """Say no to what is waiting. For the pending action: with instructions, the agent carries on
+        with the same task and reads them as feedback; without, the task stops. For a plan: with
+        instructions, the model changes the plan as they say; without, the plan is dropped."""
         if not self.pending_action:
-            return "No pending action to reject"
+            if not self.current_plan:
+                return "Nothing to reject."
+            if not new_instructions:
+                self.current_plan = None
+                return "Plan dropped; nothing ran."
+            return self.propose_plan(self.current_plan["task"], new_instructions)
 
         pending = self.pending_action
         self.pending_action = None
@@ -432,64 +447,104 @@ steps:
         return self.run_from_context(context)
 
     def _format_plan(self, plan: dict) -> str:
-        """格式化 Plan 为可读文本
-
-        Args:
-            plan: 包含 steps 和 summary 的字典
-
-        Returns:
-            格式化的计划文本
-        """
-        lines = ["## 执行计划", ""]
-
+        """The plan as the user sees it, with how to answer"""
         summary = plan.get("summary", "")
-        if summary:
-            lines.append(f"任务: {summary}")
-            lines.append("")
+        lines = [f"Plan: {summary}" if summary else "Plan:", ""]
 
+        # Before (kept for comparison): the title was "## 执行计划", steps that ask first were marked
+        # "✅ 需要确认", and it ended with "确认执行？ (/confirm /reject /skip N)"
         steps = plan.get("steps", [])
         if not steps:
-            lines.append("(无步骤)")
+            lines.append("(no steps)")
             return "\n".join(lines)
 
         for step in steps:
-            step_num = step.get("step", "?")
-            tool = step.get("tool", "?")
-            desc = step.get("description", "")
-            confirmable = step.get("confirmable", False)
-
-            line = f"{step_num}. [{tool}] {desc}"
-            if confirmable:
-                line += " ✅ 需要确认"
-
+            line = f"{step.get('step', '?')}. [{step.get('tool', '?')}] {step.get('description', '')}"
+            if step.get("skipped"):
+                line += "  (skipped)"
+            elif step.get("confirmable"):
+                line += "  (asks you first)"
             lines.append(line)
 
         lines.append("")
-        lines.append("确认执行？ (/confirm /reject /skip N)")
+        lines.append(PLAN_HINT)
 
         return "\n".join(lines)
 
-    def plan(self, task: str) -> dict:
-        """让 LLM 生成任务的执行计划
+    @staticmethod
+    def _plan_steps(steps: list) -> str:
+        """The steps of a plan as the model reads them"""
+        return "\n".join(
+            f"{step['step']}. [{step['tool']}] {step['description']}"
+            + (" (the user skipped this step: don't do it)" if step.get("skipped") else "")
+            for step in steps)
 
-        Args:
-            task: 用户任务描述
+    def plan(self, task: str, feedback: str = None) -> dict:
+        """Ask the model for a plan for task. Nothing runs. With feedback, the model changes the
+        current plan as the user asked.
 
-        Returns:
-            Plan 字典，包含 steps 和 summary
+        Returns task, summary and steps (each with step, tool, description and confirmable),
+        reply (the model's text), and error if the API call failed. A plan with steps becomes
+        the current plan, which confirm() runs.
         """
+        request = f"Make a plan for this task, in the plan format:\n\n{task}"
+        if feedback and self.current_plan:
+            request += (f"\n\nYour last plan was:\n{self._plan_steps(self.current_plan['steps'])}"
+                        f"\n\nThe user wants it changed: {feedback}")
         context = {
-            "task": f"Make a plan for this task, in the plan format:\n\n{task}",
+            "task": request,
             "system": self._build_system_prompt(),
             "history": [],
             "mode": "planning"
         }
 
         response = self.llm.chat(context)
+        if response.get("fatal"):
+            return {"task": task, "summary": "", "steps": [], "reply": "", "error": response["error"]}
         plan_text = response.get("raw", "")
         plan = self._parse_plan_response(plan_text)
+        plan.update(task=task, reply=plan_text)
 
+        if plan["steps"]:
+            self.current_plan = plan
         return plan
+
+    def propose_plan(self, task: str, feedback: str = None) -> str:
+        """plan(), as the text to show the user"""
+        plan = self.plan(task, feedback)
+        if plan.get("error"):
+            return f"LLM error: {plan['error']}"
+        if not plan["steps"]:
+            kept = " The plan from before is still waiting." if self.current_plan else ""
+            return (f"The reply had no steps in the plan format, so there is no new plan.{kept} "
+                    f"The model said:\n\n{plan['reply'] or '(nothing)'}")
+        return self._format_plan(plan)
+
+    def show_plan(self) -> str:
+        return self._format_plan(self.current_plan) if self.current_plan else NO_PLAN
+
+    def skip_step(self, step: int) -> str:
+        """Leave a step out of the current plan. Returns the plan as it is now, or what is wrong."""
+        if not self.current_plan:
+            return NO_PLAN
+        steps = self.current_plan["steps"]
+        if not 1 <= step <= len(steps):
+            return f"The plan has no step {step}. Its steps are 1 to {len(steps)}."
+        steps[step - 1]["skipped"] = True
+        return self._format_plan(self.current_plan)
+
+    def execute_plan(self) -> str:
+        """Carry out the current plan, as one task. Edits and commands in it still wait for confirm()."""
+        plan, self.current_plan = self.current_plan, None
+        if not plan:
+            return NO_PLAN
+        if all(step.get("skipped") for step in plan["steps"]):
+            return "Every step of the plan is skipped, so nothing ran."
+        task = (f"{plan['task']}\n\n"
+                "The user approved this plan. Carry it out step by step. If what you find shows that "
+                "a step is wrong, do what the task needs instead and say why.\n"
+                f"{self._plan_steps(plan['steps'])}")
+        return self.run(task)
 
     def _parse_plan_response(self, response: str) -> dict:
         """解析 LLM 的 Plan 响应"""
@@ -499,14 +554,16 @@ steps:
         }
 
         # 解析 summary
-        summary_match = re.search(r'summary:\s*(.+?)(?=\nsteps:|$)', response, re.DOTALL)
+        summary_match = re.search(r'summary:\s*(.+?)(?=\n\W*steps:|$)', response, re.DOTALL | re.IGNORECASE)
         if summary_match:
-            result["summary"] = summary_match.group(1).strip()
+            result["summary"] = summary_match.group(1).strip().strip("*").strip()
 
         # 解析 steps
-        step_pattern = re.compile(r'^\s*(\d+)\.\s*\[(\w+)\]\s*(.+?)$', re.MULTILINE)
-        for match in step_pattern.finditer(response):
-            step_num = int(match.group(1))
+        # Models often add Markdown: "1. **[read_file]** ...", "2) [`exec`] ...", "- 3. [test_run] ..."
+        # Before (kept for comparison): re.compile(r'^\s*(\d+)\.\s*\[(\w+)\]\s*(.+?)$', re.MULTILINE)
+        step_pattern = re.compile(r'^\s*(?:[-*]\s*)?(\d+)[.)]\s*\**\[\s*`?(\w+)`?\s*\]\**\s*(.+?)\s*$', re.MULTILINE)
+        # Numbered in order, so /skip N matches the number shown even if the model's numbers don't
+        for step_num, match in enumerate(step_pattern.finditer(response), 1):
             tool_name = match.group(2)
             description = match.group(3).strip()
 
