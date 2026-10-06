@@ -1,4 +1,4 @@
-"""agent/test_interactive_flow.py - 交互模式端到端流程（用假 LLM，不调用真实 API）"""
+"""agent/test_interactive_flow.py - end-to-end interactive flow (with a fake LLM, no real API calls)"""
 import copy
 import os
 import sys
@@ -12,7 +12,7 @@ import agent.tools as tools_module
 
 
 class ScriptedLLM:
-    """按顺序返回预设响应，并记录每次调用时收到的 context"""
+    """Returns scripted responses in order and records the context of each call"""
 
     def __init__(self, responses):
         self.responses = list(responses)
@@ -28,7 +28,7 @@ def setup_module(module):
 
 
 def test_user_message_accepts_interactive_context():
-    """交互模式的 context 只有 task，没有 bug_report，不应该报 KeyError"""
+    """An interactive context has task but no bug_report; building the message must not raise KeyError"""
     agent = InteractiveAgent(ScriptedLLM([]), tool_system)
     context = agent._build_initial_context("write hello.py")
 
@@ -48,7 +48,7 @@ def test_user_message_still_supports_debug_mode():
 
 
 def test_confirm_keeps_task_and_history(tmp_path):
-    """确认危险操作后，Agent 应该带着原任务和之前的历史继续，而不是从空白开始"""
+    """After a confirmed action, the agent continues with the original task and history instead of starting over"""
     target = tmp_path / "hello.py"
     llm = ScriptedLLM([
         {"thought": "look around", "action": {"tool": "find_files", "args": {"pattern": "*.py", "path": str(tmp_path)}}, "done": False},

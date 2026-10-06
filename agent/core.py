@@ -310,7 +310,7 @@ summary: 总结
                     "action": action,
                     "tool_name": tool_name,
                     "tool_args": tool_args,
-                    # 保存任务和历史，确认后从这里继续，而不是从空白开始
+                    # Keep the task and history so /confirm continues from here instead of starting over
                     "task": context.get("task", ""),
                     "history": context["history"],
                     "memory": context.get("memory"),
@@ -585,7 +585,7 @@ summary: 总结
                     "action": action,
                     "tool_name": tool_name,
                     "tool_args": tool_args,
-                    # 保存任务和历史，确认后从这里继续，而不是从空白开始
+                    # Keep the task and history so /confirm continues from here instead of starting over
                     "task": context.get("task", ""),
                     "history": context["history"],
                     "memory": context.get("memory"),
