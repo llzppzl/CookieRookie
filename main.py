@@ -202,8 +202,8 @@ class LLMClient:
                 # ===== 新的结果摘要逻辑：保留状态 + 关键细节 =====
                 success = result.get("success")
 
-                # 统一的失败分支
-                if success is False:
+                # Failures in one place (a test run that ran but had failures is shown by the test_run branch below)
+                if success is False and not (tool_name == "test_run" and "returncode" in result):
                     error_msg = result.get("error", result.get("stderr", "unknown"))
                     parts.append(f" Result: 失败 - {error_msg}")
                     continue
@@ -299,6 +299,19 @@ class LLMClient:
                             parts.append(f"  - {p}")
                         if count > max_items:
                             parts.append(f"  ... 其余 {count - max_items} 个已省略。")
+
+                elif tool_name == "test_run":
+                    # The failures and the counts come last, so keep the end of the output (the JSON view below would cut them off)
+                    counts = ", ".join(f"{key}: {result[key]}" for key in ("passed", "failed", "errors")
+                                       if result.get(key))
+                    parts.append(f" Result: {result.get('command') or 'the tests'} exited with code "
+                                 f"{result.get('returncode')}" + (f" ({counts})" if counts else "") + ".")
+                    output = ((result.get("stdout") or "") + (result.get("stderr") or "")).strip()
+                    max_len = 2000
+                    if len(output) > max_len:
+                        parts.append(f"\nOutput (the last {max_len} characters):\n[cut off] ...{output[-max_len:]}")
+                    elif output:
+                        parts.append(f"\nOutput:\n{output}")
 
                 else:
                     # 其他工具：直接给出一个截断后的 JSON 视图，避免完全丢信息
