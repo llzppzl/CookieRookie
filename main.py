@@ -3,6 +3,7 @@ Debug Agent 入口
 支持多种 LLM 提供商 (Minimax, DeepSeek, Kimi, GLM, Anthropic)
 """
 
+import ast
 import os
 import sys
 import json
@@ -108,11 +109,9 @@ class LLMClient:
         if action_match:
             action_str = action_match.group(1).strip()
             if action_str:
-                func_match = re.match(r'(\w+)\((.*)\)', action_str)
-                if func_match:
-                    tool_name = func_match.group(1)
-                    args_str = func_match.group(2)
-                    args = self._parse_args(args_str)
+                parsed = self._parse_action(action_str)
+                if parsed:
+                    tool_name, args = parsed
                     result["action"] = {"tool": tool_name, "args": args}
         
         # 提取 done
@@ -130,6 +129,31 @@ class LLMClient:
         
         return result
     
+    def _parse_action(self, action_str: str):
+        """Parse `tool(key="value", n=1)` into (tool_name, args), or None if it isn't a call.
+
+        The call is read like Python, so quotes, escapes (\\n becomes a line break), True/False
+        and key=value text inside a string all work. A string with real line breaks in it is
+        retried with them escaped. Anything Python can't read falls back to _parse_args.
+        """
+        for candidate in (action_str, action_str.replace("\n", "\\n")):
+            try:
+                call = ast.parse(candidate.strip(), mode="eval").body
+            except SyntaxError:
+                continue
+            if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name)) or call.args:
+                continue
+            try:
+                args = {kw.arg: ast.literal_eval(kw.value) for kw in call.keywords if kw.arg}
+            except ValueError:
+                continue
+            return call.func.id, args
+
+        func_match = re.match(r'(\w+)\((.*)\)', action_str, re.DOTALL)
+        if func_match:
+            return func_match.group(1), self._parse_args(func_match.group(2))
+        return None
+
     def _parse_args(self, args_str: str) -> dict:
         """解析工具参数 - 支持多种格式"""
         args = {}
