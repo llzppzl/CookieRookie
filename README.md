@@ -72,8 +72,9 @@ ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
 | `/reject` | Reject and ask agent to replan |
 | `/edit key=value` | Modify action parameters |
 | `/status` | Show pending action status |
-| `/plan` | View current execution plan |
-| `/skip N` | Skip step N in the plan |
+| `/plan <task>` | Ask for a step-by-step plan first; nothing runs yet |
+| `/plan` | Show the current plan |
+| `/skip N` | Leave out step N of the plan |
 | `exit`, `quit` | Exit interactive mode |
 
 ## How It Works
@@ -149,18 +150,22 @@ python main.py "calculator.py returns wrong result when dividing by zero"
 
 ```bash
 python main.py --interactive
-> 帮我重构登录模块，添加测试
+> /plan Refactor the login module and add tests
 
-## 执行计划
+Plan: Refactor login() and cover it with tests
 
-1. [read_file] 读取 src/auth.py
-2. [git_status] 查看当前状态
-3. [write_file] 创建 tests/test_auth.py
-4. [edit_file] 重构 login() 函数
-5. [test_run] 运行测试验证
+1. [read_file] Read src/auth.py
+2. [write_file] Create tests/test_auth.py  (asks you first)
+3. [edit_file] Refactor login()  (asks you first)
+4. [test_run] Run the tests
 
+/confirm to run it | /skip N to leave out step N | /reject [what to change]
+
+> /skip 2
 > /confirm
 ```
+
+`/confirm` runs the plan as one task. Steps that edit files or run commands still wait for your `/confirm`. `/reject <what to change>` asks for a new plan; `/reject` alone drops it.
 
 ## Extending
 

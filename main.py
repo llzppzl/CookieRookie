@@ -417,17 +417,28 @@ def interactive_main():
                 break
 
             if user_input == "/confirm":
+                # An edit or command that is waiting is answered before the plan
                 if agent.pending_action:
                     result = agent.confirm()
-                    print(f"\n{result}\n")
+                elif agent.current_plan:
+                    result = agent.execute_plan()
                 else:
-                    print("No pending action")
+                    result = "Nothing to confirm"
+                if result != "awaiting_confirmation":
+                    print(f"\n{result}\n")
                 continue
 
             if user_input.startswith("/reject"):
                 parts = user_input.split(" ", 1)
-                instructions = parts[1] if len(parts) > 1 else None
-                result = agent.reject(instructions)
+                instructions = parts[1].strip() if len(parts) > 1 else None
+                if not agent.pending_action and agent.current_plan:
+                    # With instructions the model changes the plan; without, the plan is dropped
+                    if instructions:
+                        result = agent.propose_plan(agent.current_plan["task"], instructions)
+                    else:
+                        result = agent.drop_plan()
+                else:
+                    result = agent.reject(instructions)
                 print(f"\n{result}\n")
                 continue
 
@@ -451,50 +462,49 @@ def interactive_main():
                     print(f"Tool: {agent.pending_action['action']['tool']}")
                 continue
 
-            if user_input == "/plan":
-                if hasattr(agent, 'current_plan') and agent.current_plan:
-                    formatted = agent._format_plan(agent.current_plan)
-                    print(f"\n{formatted}\n")
-                else:
-                    print("No plan available. Enter a task first.")
+            if user_input == "/plan" or user_input.startswith("/plan "):
+                # /plan <task> asks for a plan (nothing runs); /plan alone shows the current one
+                task = user_input[len("/plan"):].strip()
+                result = agent.propose_plan(task) if task else agent.show_plan()
+                print(f"\n{result}\n")
                 continue
 
-            if user_input.startswith("/skip"):
+            if user_input == "/skip" or user_input.startswith("/skip "):
                 parts = user_input.split()
-                if len(parts) > 1:
-                    try:
-                        step_num = int(parts[1])
-                        if hasattr(agent, 'skip_step'):
-                            result = agent.skip_step(step_num)
-                            print(f"\n{result}\n")
-                        else:
-                            print("Skip not supported")
-                    except ValueError:
-                        print("Invalid step number")
+                try:
+                    step_num = int(parts[1])
+                except (IndexError, ValueError):
+                    print("Usage: /skip N (the step number shown in the plan)")
+                    continue
+                print(f"\n{agent.skip_step(step_num)}\n")
                 continue
 
             if user_input in ["/help", "/h", "help"]:
                 print("""
-CookieRookie Coding Agent - 可用命令
+CookieRookie Coding Agent - commands
 
-任务输入:
-  直接输入任务描述，Agent 会自动执行
+Tasks:
+  Type a task and the agent works on it. Edits and commands wait for /confirm.
 
-交互命令:
-  /confirm          确认执行当前待确认的操作
-  /reject           拒绝当前待确认的操作，让 Agent 重新规划
-  /edit key=value   修改待确认操作的参数后执行
-  /status           查看当前待确认操作的状态
-  /plan             查看当前计划
-  /skip <step>      跳过指定步骤
+While an edit or command is waiting:
+  /confirm          Run it
+  /reject [why]     Don't run it (with a reason, the agent tries something else)
+  /edit key=value   Change its arguments, then run it
+  /status           Show what is waiting
 
-退出:
-  exit, quit        退出交互模式
+Plans:
+  /plan <task>      Ask for a step-by-step plan first; nothing runs yet
+  /plan             Show the current plan
+  /skip N           Leave out step N
+  /confirm          Run the plan (edits and commands in it still wait for /confirm)
+  /reject [change]  Change the plan as you say, or drop it
 
-示例:
-  > 帮我写一个计算器模块
-  > 为 src/calculator.py 生成测试
-  > 修复登录功能的 bug
+Quit:
+  exit, quit
+
+Examples:
+  > Write a calculator module
+  > /plan Add tests for src/calculator.py
 """)
                 continue
 
