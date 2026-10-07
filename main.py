@@ -20,13 +20,20 @@ from agent.core import create_interactive_agent
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+# Longest reply the model may write. write_file sends a whole file in one reply, so this must not
+# be small. Set MAX_TOKENS in .env to change it.
+DEFAULT_MAX_TOKENS = 8192
+
+
 class LLMClient:
     """通用 LLM 客户端 (Anthropic 兼容模式)"""
     
-    def __init__(self, api_key: str, model: str = "MiniMax-M2.5", base_url: str = "https://api.minimax.io/anthropic"):
+    def __init__(self, api_key: str, model: str = "MiniMax-M2.5", base_url: str = "https://api.minimax.io/anthropic",
+                 max_tokens: int = None):
         self.api_key = api_key
         self.model = model
         self.base_url = base_url
+        self.max_tokens = max_tokens or load_config()["max_tokens"]
     
     def chat(self, context: dict) -> dict:
         """调用 LLM API (Anthropic 兼容格式)"""
@@ -46,20 +53,27 @@ class LLMClient:
         data = {
             "model": self.model,
             "messages": messages,
-            "max_tokens": 1024,
+            "max_tokens": self.max_tokens,
             "temperature": 0.7,
             "system": system_prompt
         }
         
-        response = requests.post(
-            f"{self.base_url}/v1/messages",
-            headers=headers,
-            json=data,
-            timeout=60
-        )
+        # "fatal" marks errors that retrying won't fix (wrong key, no quota, cut-off reply):
+        # the agent stops and shows them instead of calling the API again and again
+        try:
+            response = requests.post(
+                f"{self.base_url}/v1/messages",
+                headers=headers,
+                json=data,
+                timeout=60
+            )
+        except requests.RequestException as e:
+            return {"action": None, "fatal": True, "raw": "",
+                    "error": f"Could not reach {self.base_url}: {type(e).__name__}: {e}"}
         
         if response.status_code != 200:
-            return {"action": None, "error": f"API error: {response.status_code} - {response.text[:500]}", "raw": response.text}
+            return {"action": None, "fatal": True, "raw": response.text,
+                    "error": f"API error: {response.status_code} - {response.text[:500]}"}
         
         result = response.json()
         
@@ -77,6 +91,13 @@ class LLMClient:
         # 打印 thinking（调试用）
         if thinking_content:
             print(f"\n=== LLM Thinking ===\n{thinking_content[:300]}...\n=====================\n")
+        
+        # A reply cut off at max_tokens would be read as a half-written action (a file without its
+        # end, a command without its last argument), so it is reported instead of run
+        if result.get("stop_reason") == "max_tokens":
+            return {"action": None, "fatal": True, "raw": json_content,
+                    "error": (f"The reply was cut off at max_tokens={self.max_tokens}. "
+                              "Set a larger MAX_TOKENS in .env, or ask for a smaller step.")}
         
         # 解析响应
         parsed = self._parse_response(json_content)
@@ -327,7 +348,8 @@ def load_config():
     config = {
         "api_key": None,
         "model": "MiniMax-M2.5",
-        "base_url": "https://api.minimax.io/anthropic"
+        "base_url": "https://api.minimax.io/anthropic",
+        "max_tokens": DEFAULT_MAX_TOKENS,
     }
     
     if os.path.exists(env_path):
@@ -340,6 +362,10 @@ def load_config():
                     config["base_url"] = line.split("=", 1)[1].strip()
                 elif line.startswith("MODEL_ID="):
                     config["model"] = line.split("=", 1)[1].strip()
+                elif line.startswith("MAX_TOKENS="):
+                    value = line.split("=", 1)[1].strip()
+                    if value.isdigit() and int(value) > 0:
+                        config["max_tokens"] = int(value)
     
     return config
 
