@@ -51,7 +51,11 @@ Create a `.env` file:
 ANTHROPIC_API_KEY=your-api-key-here
 MODEL_ID=MiniMax-M2.5
 ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
+# Optional: longest reply in tokens (default 8192). Raise it if replies get cut off.
+MAX_TOKENS=8192
 ```
+
+If the API returns an error (wrong key, no quota) or a reply is cut off at `MAX_TOKENS`, the agent stops and shows the error instead of retrying.
 
 ### Supported Models
 
