@@ -27,12 +27,16 @@ def read_file(path: str, offset: int = 1, limit: int = 100) -> dict:
         limit: 最大行数
     """
     try:
+        offset, limit = int(offset), int(limit)
+        # Below 1, lines[offset - 1:] would count from the end of the file
+        if offset < 1 or limit < 1:
+            return {"success": False, "error": f"offset and limit must be at least 1 (got offset={offset}, limit={limit})"}
         with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
-        
+
         total_lines = len(lines)
         end = min(offset + limit - 1, total_lines)
-        
+
         if offset > total_lines:
             return {"success": False, "error": f"Offset {offset} beyond file length {total_lines}"}
         
@@ -60,14 +64,17 @@ def edit_file(path: str, line: int = None, new_string: str = None,
         new_string: 新内容
         old_string: 旧内容 (备用)
     """
+    if new_string is None:
+        return {"success": False, "error": "new_string is missing: give the new content"}
     try:
         with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
-        
+
         edit_mode = None
 
         if line is not None:
             # 按行号修改
+            line = int(line)
             if line < 1 or line > len(lines):
                 return {"success": False, "error": f"Line {line} out of range (1-{len(lines)})"}
             # 保留原始实现，作为学习对比
@@ -79,6 +86,12 @@ def edit_file(path: str, line: int = None, new_string: str = None,
             content = "".join(lines)
             if old_string not in content:
                 return {"success": False, "error": "old_string not found in file"}
+            # Replacing the first of several matches may change the wrong place
+            occurrences = content.count(old_string)
+            if occurrences > 1:
+                return {"success": False,
+                        "error": f"old_string appears {occurrences} times in the file; include more surrounding "
+                                 "lines so it matches once, or edit by line number"}
             # 保留原始实现，作为学习对比
             # content = content.replace(old_string, new_string, 1)
             content = content.replace(old_string, new_string, 1)
@@ -200,6 +213,10 @@ def write_file(path: str, content: str) -> dict:
         content: 文件内容
     """
     try:
+        # A new file may go in a folder that does not exist yet (e.g. tests/)
+        folder = os.path.dirname(path)
+        if folder:
+            os.makedirs(folder, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
             f.write(content)
         return {
