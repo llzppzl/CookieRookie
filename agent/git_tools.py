@@ -1,8 +1,24 @@
-"""Git operation tools for CookieRookie agent."""
+"""Git operation tools for CookieRookie agent.
+
+They run git in the current directory: the project CookieRookie was started in.
+"""
 
 import subprocess
-import os
 from typing import Optional, List, Dict, Any
+
+
+def _git(*args: str) -> subprocess.CompletedProcess:
+    """Run git in the current directory.
+
+    These tools used to run git in the directory above this file: the CookieRookie checkout,
+    or site-packages after pip install, so they never saw the user's project.
+    """
+    return subprocess.run(["git", *args], capture_output=True, text=True)
+
+
+def _error(result: subprocess.CompletedProcess) -> str:
+    """Why a git command failed. Some reasons are on stdout, like "nothing to commit"."""
+    return result.stderr.strip() or result.stdout.strip() or f"git exited with code {result.returncode}"
 
 
 def git_status() -> Dict[str, Any]:
@@ -15,13 +31,12 @@ def git_status() -> Dict[str, Any]:
         clean: Whether the working tree is clean
     """
     try:
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
-            capture_output=True,
-            text=True,
-            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
-        lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
+        result = _git("status", "--porcelain")
+        if result.returncode != 0:  # e.g. not a git repository
+            return {"success": False, "files": [], "count": 0, "clean": False, "error": _error(result)}
+        # Not strip(): the first line can start with a space (" M file" is a modified file),
+        # and stripping it cut the first letter off the file name
+        lines = result.stdout.splitlines()
         files = []
         for line in lines:
             if line:
@@ -56,15 +71,8 @@ def git_diff(path: Optional[str] = None) -> Dict[str, Any]:
         returncode: The return code of the git command
     """
     try:
-        cmd = ["git", "diff"]
-        if path:
-            cmd.append(path)
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        )
+        # After "--", path can't be read as an option (git diff --output=FILE writes a file)
+        result = _git("diff", "--", path) if path else _git("diff")
         return {
             "success": result.returncode == 0,
             "diff": result.stdout,
@@ -94,19 +102,10 @@ def git_commit(message: str, files: Optional[List[str]] = None) -> Dict[str, Any
         error: Error message if any
     """
     try:
-        repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if isinstance(files, str):  # one file, not a list
+            files = [files]
         # First git add
-        if files:
-            add_cmd = ["git", "add"] + files
-        else:
-            add_cmd = ["git", "add", "."]
-
-        add_result = subprocess.run(
-            add_cmd,
-            capture_output=True,
-            text=True,
-            cwd=repo_dir
-        )
+        add_result = _git("add", "--", *files) if files else _git("add", ".")
 
         if add_result.returncode != 0:
             return {
@@ -117,18 +116,13 @@ def git_commit(message: str, files: Optional[List[str]] = None) -> Dict[str, Any
             }
 
         # Then git commit
-        commit_result = subprocess.run(
-            ["git", "commit", "-m", message],
-            capture_output=True,
-            text=True,
-            cwd=repo_dir
-        )
+        commit_result = _git("commit", "-m", message)
 
         return {
             "success": commit_result.returncode == 0,
             "message": message,
             "output": commit_result.stdout,
-            "error": commit_result.stderr if commit_result.returncode != 0 else ""
+            "error": _error(commit_result) if commit_result.returncode != 0 else ""
         }
     except Exception as e:
         return {
@@ -151,26 +145,16 @@ def git_branch(list_branches: bool = False) -> Dict[str, Any]:
         current: Current branch name
     """
     try:
-        repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
         # Get current branch
-        current_result = subprocess.run(
-            ["git", "branch", "--show-current"],
-            capture_output=True,
-            text=True,
-            cwd=repo_dir
-        )
+        current_result = _git("branch", "--show-current")
+        if current_result.returncode != 0:
+            return {"success": False, "branches": [], "current": "", "error": _error(current_result)}
         current = current_result.stdout.strip()
 
         branches = []
         if list_branches:
-            result = subprocess.run(
-                ["git", "branch", "-a"],
-                capture_output=True,
-                text=True,
-                cwd=repo_dir
-            )
-            lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
+            result = _git("branch", "-a")
+            lines = result.stdout.splitlines()
             for line in lines:
                 # Remove * prefix for current branch
                 branches.append(line.strip().lstrip("* ").strip())
@@ -201,19 +185,16 @@ def git_log(limit: int = 10) -> Dict[str, Any]:
         count: Number of commits returned
     """
     try:
-        repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        result = subprocess.run(
-            ["git", "log", f"--max-count={limit}", "--pretty=format:%H|%s|%an|%ad|%ai"],
-            capture_output=True,
-            text=True,
-            cwd=repo_dir
-        )
+        # Fields are separated by \x1f rather than "|", which a commit subject can contain
+        result = _git("log", f"--max-count={int(limit)}", "--pretty=format:%H%x1f%s%x1f%an%x1f%ad%x1f%ai")
+        if result.returncode != 0:  # e.g. not a git repository, or no commits yet
+            return {"success": False, "commits": [], "count": 0, "error": _error(result)}
 
         commits = []
-        lines = result.stdout.strip().split("\n") if result.stdout.strip() else []
+        lines = result.stdout.splitlines()
         for line in lines:
             if line:
-                parts = line.split("|")
+                parts = line.split("\x1f")
                 if len(parts) >= 5:
                     commits.append({
                         "hash": parts[0],
@@ -251,25 +232,16 @@ def git_checkout(branch: str, create: bool = False) -> Dict[str, Any]:
         error: Error message if any
     """
     try:
-        repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        cmd = ["git", "checkout"]
-        if create:
-            cmd.extend(["-b", branch])
-        else:
-            cmd.append(branch)
-
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            cwd=repo_dir
-        )
+        if branch.startswith("-"):
+            return {"success": False, "branch": branch, "output": "",
+                    "error": f"Not a branch name: {branch}"}
+        result = _git("checkout", "-b", branch) if create else _git("checkout", branch)
 
         return {
             "success": result.returncode == 0,
             "branch": branch,
             "output": result.stdout,
-            "error": result.stderr if result.returncode != 0 else ""
+            "error": _error(result) if result.returncode != 0 else ""
         }
     except Exception as e:
         return {
@@ -278,3 +250,21 @@ def git_checkout(branch: str, create: bool = False) -> Dict[str, Any]:
             "output": "",
             "error": str(e)
         }
+
+
+def register_git_tools() -> None:
+    """Offer the git tools to the interactive agent. Committing and switching branches ask first."""
+    from .tool_system import tool_system
+
+    tool_system.register("git_status", git_status, confirmable=False,
+                         description="List changed files in the project (git status)")
+    tool_system.register("git_diff", git_diff, confirmable=False,
+                         description="Show uncommitted changes, optionally for one path (path)")
+    tool_system.register("git_log", git_log, confirmable=False,
+                         description="Show recent commits (limit, default 10)")
+    tool_system.register("git_branch", git_branch, confirmable=False,
+                         description="Show the current branch; list_branches=True lists all branches")
+    tool_system.register("git_commit", git_commit, confirmable=True,
+                         description="Commit changes with a message (message); files: list of paths, default all changes")
+    tool_system.register("git_checkout", git_checkout, confirmable=True,
+                         description="Switch to a branch (branch); create=True creates it first")

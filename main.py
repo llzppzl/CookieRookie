@@ -395,6 +395,9 @@ def interactive_main():
     from agent.tool_system import tool_system
     from agent import tools as tools_module
     tools_module.register_base_tools()
+    # git tools run git in the current directory: the project CookieRookie was started in
+    from agent.git_tools import register_git_tools
+    register_git_tools()
 
     from agent.core import create_interactive_agent
 
