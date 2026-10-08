@@ -7,6 +7,7 @@ import os
 import sys
 import json
 import re
+import shlex
 import requests
 
 # 添加当前目录到路径
@@ -432,9 +433,14 @@ def interactive_main():
                 continue
 
             if user_input.startswith("/edit"):
-                parts = user_input[5:].strip()
+                # shlex keeps a quoted value with spaces together: /edit command="pytest -x"
+                try:
+                    words = shlex.split(user_input[5:].strip())
+                except ValueError as e:
+                    print(f"Invalid /edit usage: {e}")
+                    continue
                 modifications = {}
-                for part in parts.split():
+                for part in words:
                     if "=" in part:
                         k, v = part.split("=", 1)
                         modifications[k] = v
