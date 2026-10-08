@@ -70,7 +70,7 @@ ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
 | `help` | Show help information |
 | `/confirm` | Confirm and execute pending action |
 | `/reject` | Reject and ask agent to replan |
-| `/edit key=value` | Modify action parameters |
+| `/edit key=value` | Change some arguments of the pending action, then run it (e.g. `/edit line=19`, `/edit command="pytest -x"`) |
 | `/status` | Show pending action status |
 | `/plan` | View current execution plan |
 | `/skip N` | Skip step N in the plan |
