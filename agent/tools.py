@@ -277,11 +277,6 @@ def register_base_tools() -> None:
 def register_tools() -> Dict[str, Callable]:
     """注册所有可用工具"""
     register_base_tools()
-    return {
-        "read_file": read_file,
-        "edit_file": edit_file,
-        "write_file": write_file,
-        "exec": exec,
-        "search_files": search_files,
-        "find_files": find_files,
-    }
+    # The registered versions, which report wrong arguments back to the model instead of raising
+    names = ["read_file", "edit_file", "write_file", "exec", "search_files", "find_files"]
+    return {name: tool_system.get(name).fn for name in names}
