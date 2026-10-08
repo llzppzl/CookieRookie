@@ -5,7 +5,6 @@ Debug Agent 工具集
 import os
 import re
 import subprocess
-import glob
 import fnmatch
 from typing import Dict, Callable, List
 from .tool_system import tool_system
@@ -143,49 +142,50 @@ def exec(command: str, workdir: str = None, timeout: int = 30) -> dict:
         return {"success": False, "error": str(e)}
 
 
+# Folders that hold installed packages, caches or version control data, not the project's code.
+# They can hold thousands of files, which pushed the project's own files out of the first 50 results.
+SKIP_DIRS = {"node_modules", "venv", "env", "__pycache__", "site-packages", "dist", "build"}
+
+
+def _walk_project(path: str):
+    """Like os.walk, in a stable order, without SKIP_DIRS and hidden folders (.git, .venv, ...).
+    Only folders found during the walk are skipped, so path itself may be one of them."""
+    for root, dirs, files in os.walk(path):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS and not d.startswith("."))
+        yield root, sorted(files)
+
+
 def search_files(pattern: str, path: str = ".", file_glob: str = "*.py", use_regex: bool = False) -> dict:
-    """搜索文件中的关键词
-    
+    """Search file contents for pattern
+
     Args:
-        pattern: 搜索模式 (正则)
-        path: 搜索路径
-        file_glob: 文件匹配模式
+        pattern: Text to look for (a regex if use_regex is True)
+        path: Folder to search (installed packages, caches and hidden folders are skipped)
+        file_glob: Which files to search, e.g. "*.py", or "src/*.py" to match the path
     """
     try:
         matches = []
-        glob_pattern = os.path.join(path, "**", file_glob)
-
-        # 如果使用正则，则按照原来的行为处理；否则按字面/通配符匹配
+        # A plain pattern is matched as text, so characters like ( or * need no escaping
         regex = re.compile(pattern) if use_regex else None
 
-        for filepath in glob.glob(glob_pattern, recursive=True):
-            try:
-                with open(filepath, "r", encoding="utf-8") as f:
-                    for i, line in enumerate(f, 1):
-                        text = line.rstrip("\n")
-                        matched = False
-                        if use_regex:
-                            if regex.search(text):
-                                matched = True
-                        else:
-                            # 简单字面包含匹配，避免正则陷阱
-                            if pattern in text:
-                                matched = True
+        for root, files in _walk_project(path):
+            for filename in files:
+                filepath = os.path.join(root, filename)
+                target = os.path.relpath(filepath, path).replace("\\", "/") if "/" in file_glob else filename
+                if not fnmatch.fnmatch(target, file_glob):
+                    continue
+                try:
+                    with open(filepath, "r", encoding="utf-8") as f:
+                        for i, line in enumerate(f, 1):
+                            text = line.rstrip("\n")
+                            if (regex.search(text) if use_regex else pattern in text):
+                                matches.append({"file": filepath, "line": i, "content": text.strip()})
+                except (OSError, UnicodeDecodeError):
+                    continue
 
-                        if matched:
-                            matches.append(
-                                {
-                                    "file": filepath,
-                                    "line": i,
-                                    "content": text.strip(),
-                                }
-                            )
-            except:
-                continue
-        
         return {
             "success": True,
-            "matches": matches[:50],  # 限制返回数量
+            "matches": matches[:50],  # at most 50, so the reply stays short
             "count": len(matches)
         }
     except Exception as e:
@@ -212,39 +212,26 @@ def write_file(path: str, content: str) -> dict:
 
 
 def find_files(pattern: str, path: str = ".", use_regex: bool = False) -> dict:
-    """查找文件
+    """Find files by name
 
     Args:
-        pattern: 文件名匹配模式
-        path: 搜索路径
+        pattern: File name pattern like "*.py" ("src/*.py" matches the path; a regex if use_regex)
+        path: Folder to search (installed packages, caches and hidden folders are skipped)
     """
     try:
         matches: List[str] = []
 
-        # 原始实现（保留作为对比学习）：
-        # for root, dirs, files in os.walk(path):
-        #     for filename in files:
-        #         if re.search(pattern, filename):
-        #             matches.append(os.path.join(root, filename))
-
-        for root, dirs, files in os.walk(path):
+        for root, files in _walk_project(path):
             for filename in files:
+                filepath = os.path.join(root, filename)
                 if use_regex:
-                    # 显式使用正则时才按正则解释 pattern
-                    if re.search(pattern, filename):
-                        matches.append(os.path.join(root, filename))
+                    found = re.search(pattern, filename)
+                elif "/" in pattern or "\\" in pattern:
+                    found = fnmatch.fnmatch(os.path.relpath(filepath, path).replace("\\", "/"), pattern)
                 else:
-                    # 默认使用通配/字面模式，避免正则错误（nothing to repeat 等）
-                    rel_path = os.path.relpath(os.path.join(root, filename), path)
-                    rel_path_norm = rel_path.replace("\\", "/")
-
-                    # 如果 pattern 中带路径分隔符，则在相对路径上匹配；否则只匹配文件名
-                    if "/" in pattern or "\\" in pattern:
-                        if fnmatch.fnmatch(rel_path_norm, pattern):
-                            matches.append(os.path.join(root, filename))
-                    else:
-                        if fnmatch.fnmatch(filename, pattern):
-                            matches.append(os.path.join(root, filename))
+                    found = fnmatch.fnmatch(filename, pattern)
+                if found:
+                    matches.append(filepath)
 
         return {
             "success": True,
