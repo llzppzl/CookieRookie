@@ -161,7 +161,7 @@ class LLMClient:
         
         # 历史记录
         if context["history"]:
-            parts.append("\n## History (你之前做了什么)")
+            parts.append("\n## History (what you have done so far)")
             for h in context["history"]:
                 action = h.get("action", {})
                 result = h.get("result", {})
@@ -171,14 +171,14 @@ class LLMClient:
                 tool_name = action.get("tool", "unknown")
                 args = action.get("args", {})
                 
-                parts.append(f"\n### 第 {iteration} 轮")
+                parts.append(f"\n### Step {iteration}")
                 parts.append(f" Thought: {thought}")
                 
                 if tool_name and tool_name != "unknown":
                     args_parts = []
                     for k, v in args.items():
                         if k == "new_string" and len(str(v)) > 50:
-                            args_parts.append(f'{k}="[内容截断]"')
+                            args_parts.append(f'{k}="[cut off]"')
                         else:
                             args_parts.append(f'{k}="{v}"' if isinstance(v, str) else f'{k}={v}')
                     args_str = ", ".join(args_parts)
@@ -205,12 +205,12 @@ class LLMClient:
                 # 统一的失败分支
                 if success is False:
                     error_msg = result.get("error", result.get("stderr", "unknown"))
-                    parts.append(f" Result: 失败 - {error_msg}")
+                    parts.append(f" Result: failed - {error_msg}")
                     continue
 
                 # 没有 result 的情况
                 if result is None:
-                    parts.append(" Result: 无返回结果")
+                    parts.append(" Result: (no result)")
                     continue
 
                 # 按工具类型分别给出「一句话总结 + 关键字段」
@@ -219,7 +219,7 @@ class LLMClient:
                     total = result.get("total", "?")
                     content = result.get("content", "")
 
-                    parts.append(f" Result: 读取了 {lines} 行（共 {total} 行）代码。")
+                    parts.append(f" Result: read lines {lines} (of {total}).")
 
                     # 对长文件做截断，但明确标出
                     max_chars = 2000
@@ -230,22 +230,22 @@ class LLMClient:
                         truncated = True
 
                     if snippet:
-                        parts.append("\n```code\n" + snippet + ("\n... [内容已截断]" if truncated else "") + "\n```")
+                        parts.append("\n```code\n" + snippet + ("\n... [cut off]" if truncated else "") + "\n```")
 
                 elif tool_name == "exec":
                     returncode = result.get("returncode")
                     stdout = (result.get("stdout") or "").strip()
                     stderr = (result.get("stderr") or "").strip()
 
-                    parts.append(f" Result: 命令执行完成，returncode={returncode}.")
+                    parts.append(f" Result: the command finished with returncode={returncode}.")
 
                     def _truncate(text: str, label: str) -> str:
                         if not text:
                             return ""
                         max_len = 800
                         if len(text) > max_len:
-                            return f"{label}（前 {max_len} 字符）：\n{text[:max_len]}\n... [输出已截断]\n"
-                        return f"{label}：\n{text}\n"
+                            return f"{label} (the first {max_len} characters):\n{text[:max_len]}\n... [cut off]\n"
+                        return f"{label}:\n{text}\n"
 
                     snippet_blocks = []
                     if stdout:
@@ -262,7 +262,7 @@ class LLMClient:
                     mode = result.get("mode") or ("line" if "line" in args else "old_string")
                     new_line = result.get("new_line")
 
-                    summary = f" Result: 编辑成功（mode={mode}"
+                    summary = f" Result: edited (mode={mode}"
                     if line_no:
                         summary += f", line={line_no}"
                     if path:
@@ -271,34 +271,34 @@ class LLMClient:
                     parts.append(summary)
 
                     if new_line:
-                        parts.append(f" 新行内容: {new_line}")
+                        parts.append(f" New line: {new_line}")
 
                 elif tool_name == "search_files" and success:
                     count = result.get("count", 0)
                     matches = result.get("matches") or []
-                    parts.append(f" Result: 搜索到 {count} 处匹配。")
+                    parts.append(f" Result: {count} matches.")
 
                     # 展示前若干条匹配，避免一次性塞太多
                     max_items = 5
                     if matches:
-                        parts.append(" 部分匹配示例：")
+                        parts.append(" First matches:")
                         for m in matches[:max_items]:
                             parts.append(f"  - {m.get('file')}:{m.get('line')}: {m.get('content')}")
                         if count > max_items:
-                            parts.append(f"  ... 其余 {count - max_items} 条已省略。")
+                            parts.append(f"  ... {count - max_items} more not shown.")
 
                 elif tool_name == "find_files" and success:
                     count = result.get("count", 0)
                     matches = result.get("matches") or []
-                    parts.append(f" Result: 找到 {count} 个文件。")
+                    parts.append(f" Result: {count} files found.")
 
                     max_items = 10
                     if matches:
-                        parts.append(" 文件列表（部分）：")
+                        parts.append(" First files:")
                         for p in matches[:max_items]:
                             parts.append(f"  - {p}")
                         if count > max_items:
-                            parts.append(f"  ... 其余 {count - max_items} 个已省略。")
+                            parts.append(f"  ... {count - max_items} more not shown.")
 
                 else:
                     # 其他工具：直接给出一个截断后的 JSON 视图，避免完全丢信息
@@ -306,7 +306,7 @@ class LLMClient:
                         result_json = json.dumps(result, ensure_ascii=False)
                         max_len = 800
                         if len(result_json) > max_len:
-                            result_json = result_json[:max_len] + "... [结果已截断]"
+                            result_json = result_json[:max_len] + "... [cut off]"
                         parts.append(f" Result(raw): {result_json}")
                     except Exception:
                         parts.append(f" Result: {result}")
