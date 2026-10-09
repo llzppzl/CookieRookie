@@ -320,8 +320,23 @@ class LLMClient:
         return "\n".join(parts)
 
 
+# Environment variable -> config key. Each one can also be set in .env.
+ENV_SETTINGS = {
+    "ANTHROPIC_API_KEY": "api_key",
+    "ANTHROPIC_BASE_URL": "base_url",
+    "MODEL_ID": "model",
+}
+API_KEY_PLACEHOLDER = "your-api-key-here"
+
+
+def print_missing_key():
+    print("Error: no API key found.")
+    print(f"Set ANTHROPIC_API_KEY in {os.path.join(PROJECT_DIR, '.env')} (copy .env.example to start)")
+    print("or in your environment: export ANTHROPIC_API_KEY=your-key")
+
+
 def load_config():
-    """从 .env 文件加载配置"""
+    """Load settings from .env in the CookieRookie folder, then from environment variables (which win)"""
     env_path = os.path.join(PROJECT_DIR, ".env")
     
     config = {
@@ -341,6 +356,21 @@ def load_config():
                 elif line.startswith("MODEL_ID="):
                     config["model"] = line.split("=", 1)[1].strip()
     
+    # Environment variables win over .env, so `export ANTHROPIC_API_KEY=...` works without a .env file
+    for env_name, key in ENV_SETTINGS.items():
+        value = os.environ.get(env_name, "").strip()
+        if value:
+            config[key] = value
+
+    # KEY="value" and KEY='value' are common in .env files: the quotes are not part of the value
+    for key, value in config.items():
+        if isinstance(value, str) and len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            config[key] = value[1:-1].strip()
+
+    # An empty key or the placeholder from .env.example counts as no key
+    if config["api_key"] in ("", API_KEY_PLACEHOLDER):
+        config["api_key"] = None
+
     return config
 
 
@@ -357,9 +387,7 @@ def main():
     config = load_config()
     
     if not config["api_key"]:
-        print("Error: ANTHROPIC_API_KEY not found in .env")
-        print(f"Please create .env file in {PROJECT_DIR}")
-        print("See .env.example for reference")
+        print_missing_key()
         return
     
     print(f"Config: model={config['model']}, base_url={config['base_url']}")
@@ -385,7 +413,7 @@ def interactive_main():
     config = load_config()
 
     if not config["api_key"]:
-        print("Error: ANTHROPIC_API_KEY not found in .env")
+        print_missing_key()
         return
 
     print(f"CookieRookie Coding Agent ({config['model']})")
