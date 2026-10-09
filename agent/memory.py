@@ -6,7 +6,7 @@ from typing import Optional
 
 
 class ProjectMemory:
-    """项目记忆管理器"""
+    """Remembers a project's layout and commands in .agent-memory.json in the project folder"""
 
     DEFAULT_STRUCTURE = {
         "src_dir": None,
@@ -23,13 +23,13 @@ class ProjectMemory:
     }
 
     def __init__(self, project_path: str):
-        """初始化，加载或创建记忆文件"""
+        """Load the memory file, or start a new memory if there is none"""
         self.project_path = project_path
         self.path = os.path.join(project_path, ".agent-memory.json")
         self.data = self._load()
 
     def _load(self) -> dict:
-        """加载 .agent-memory.json，不存在则创建默认"""
+        """Load .agent-memory.json, or return the default memory if it is missing or unreadable"""
         if os.path.exists(self.path):
             try:
                 with open(self.path, "r", encoding="utf-8") as f:
@@ -39,7 +39,7 @@ class ProjectMemory:
         return self._create_default()
 
     def _create_default(self) -> dict:
-        """创建默认记忆"""
+        """The memory of a project nothing is known about yet"""
         return {
             "project_path": self.project_path,
             "updated_at": datetime.now().isoformat(),
@@ -49,47 +49,47 @@ class ProjectMemory:
         }
 
     def save(self) -> None:
-        """持久化到文件"""
+        """Write the memory to .agent-memory.json"""
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(self.data, f, indent=2, ensure_ascii=False)
 
     def update_structure(self, info: dict) -> None:
-        """更新项目结构"""
+        """Update the project layout (src_dir, test_dir, ...) and save"""
         self.data["structure"].update(info)
         self.data["updated_at"] = datetime.now().isoformat()
         self.save()
 
     def update_tools(self, info: dict) -> None:
-        """更新工具配置"""
+        """Update the project commands (test_command, ...) and save"""
         self.data["tools"].update(info)
         self.data["updated_at"] = datetime.now().isoformat()
         self.save()
 
     def get_context(self) -> str:
-        """获取注入 Agent 的字符串"""
-        lines = ["## 项目记忆"]
+        """The memory as text for the model"""
+        lines = ["## Project memory"]
 
         s = self.data.get("structure", {})
         if any(s.values()):
-            lines.append("### 项目结构")
+            lines.append("### Project structure")
             for k, v in s.items():
                 if v:
                     lines.append(f"- {k}: {v}")
 
         t = self.data.get("tools", {})
         if any(t.values()):
-            lines.append("### 常用命令")
+            lines.append("### Commands")
             for k, v in t.items():
                 if v:
                     lines.append(f"- {k}: {v}")
 
-        lines.append(f"\n最后更新: {self.data.get('updated_at', '未知')}")
+        lines.append(f"\nLast updated: {self.data.get('updated_at', 'unknown')}")
 
         return "\n".join(lines)
 
     def is_stale(self, days: int = 7) -> bool:
-        """检查记忆是否过期"""
+        """Whether the memory is older than the given number of days"""
         updated = self.data.get("updated_at")
         if not updated:
             return True
