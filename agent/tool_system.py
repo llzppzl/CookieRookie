@@ -2,8 +2,37 @@
 ToolSystem - 插件化工具注册表
 """
 
+import functools
+import inspect
 from typing import Dict, Callable, Any, Optional
 from dataclasses import dataclass
+
+
+def checked(name: str, fn: Callable) -> Callable:
+    """Wrap fn so that arguments it does not take come back as an error result the model can
+    read and correct, instead of a TypeError that ends the whole task."""
+    try:
+        sig = inspect.signature(fn)
+    except (TypeError, ValueError):
+        return fn
+
+    takes_any = any(p.kind == p.VAR_KEYWORD for p in sig.parameters.values())
+    arg_names = ", ".join(p.name for p in sig.parameters.values()
+                          if p.kind not in (p.VAR_POSITIONAL, p.VAR_KEYWORD)) or "none"
+
+    @functools.wraps(fn)
+    def call(*args, **kwargs):
+        unknown = [] if takes_any else [k for k in kwargs if k not in sig.parameters]
+        try:
+            if unknown:
+                raise TypeError("unknown argument " + ", ".join(repr(k) for k in unknown))
+            sig.bind(*args, **kwargs)
+        except TypeError as e:
+            return {"success": False,
+                    "error": f"TypeError: wrong arguments for {name}: {e}. Its arguments are: {arg_names}."}
+        return fn(*args, **kwargs)
+
+    return call
 
 
 @dataclass
@@ -33,7 +62,7 @@ class ToolSystem:
         """注册工具"""
         self._tools[name] = ToolDef(
             name=name,
-            fn=fn,
+            fn=checked(name, fn),
             confirmable=confirmable,
             description=description,
             args_schema=args_schema
