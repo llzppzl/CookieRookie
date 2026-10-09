@@ -75,7 +75,7 @@ class TestProjectMemory:
             memory.update_tools({"test_command": "pytest"})
 
             context = memory.get_context()
-            assert "## 项目记忆" in context
+            assert "## Project memory" in context
             assert "src" in context
             assert "tests" in context
             assert "pytest" in context

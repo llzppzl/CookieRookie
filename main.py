@@ -403,7 +403,9 @@ def interactive_main():
         config["model"],
         config["base_url"]
     )
-    agent = create_interactive_agent(llm_client, tool_system)
+    # The folder you start CookieRookie in is the project it works on: it remembers that folder's
+    # layout in .agent-memory.json there and tells the model about it
+    agent = create_interactive_agent(llm_client, tool_system, project_path=os.getcwd())
     agent.current_plan = None
 
     while True:

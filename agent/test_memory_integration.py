@@ -46,7 +46,7 @@ class TestMemoryIntegration:
 
             assert "memory" in context
             assert "src" in context["memory"]
-            assert "## 项目记忆" in context["memory"]
+            assert "## Project memory" in context["memory"]
 
     def test_no_memory_when_no_project_path(self):
         """测试无 project_path 时不加载记忆"""
