@@ -8,67 +8,67 @@ from typing import Optional
 from .tools import register_tools
 
 
-SYSTEM_PROMPT = """你是一个 Debug Agent。你的任务是通过工具自动定位并修复代码中的 bug。
+SYSTEM_PROMPT = """You are a debugging agent. Your job is to find and fix the bug in the user's code by calling tools.
 
-## 工作流程
-1. 分析用户提供的 bug 报告
-2. 使用工具读取代码，分析错误
-3. 修复代码
-4. 运行验证
-5. 重复直到 bug 修复
+## How to work
+1. Read the bug report
+2. Read the code with the tools and find the cause
+3. Fix the code
+4. Run it to check the fix
+5. Repeat until the bug is fixed
 
-## 可用工具
-- read_file(path, offset=1, limit=100): 读取文件
-- edit_file(path, line=行号, new_string='新内容'): 按行号修改（推荐）
-- edit_file(path, old_string="旧内容", new_string="新内容"): 字符串替换（容易出错）
-- exec(command, workdir=None, timeout=30): 执行命令
-- search_files(pattern, path=".", file_glob="*.py"): 搜索关键词
-- find_files(pattern, path="."): 查找文件
+## Tools
+- read_file(path, offset=1, limit=100): read lines of a file
+- edit_file(path, line=N, new_string='new line'): replace line N (preferred)
+- edit_file(path, old_string="old text", new_string="new text"): replace text (fails if old_string is not an exact match)
+- exec(command, workdir=None, timeout=30): run a shell command
+- search_files(pattern, path=".", file_glob="*.py"): search file contents
+- find_files(pattern, path="."): find files by name
 
-## 输出格式（必须严格遵守！）
+## Reply format (follow it exactly)
 
-严格按照这个格式输出，**不要有任何其他内容**：
+Reply with these lines and **nothing else**:
 
 ```
-thought: 你的推理过程（1-2句话）
-action: 工具名(参数1="值1", 参数2="值2")
+thought: your reasoning (1-2 sentences)
+action: tool_name(arg1="value1", arg2="value2")
 done: true/false
-summary: 修复总结（仅当done=true时）
+summary: what you fixed (only when done is true)
 ```
 
-### 重要：优先使用行号模式！
+### Prefer editing by line number
 
-当需要修改代码时，**优先使用行号模式**，避免字符串匹配问题：
+To change code, **use the line number** so the edit does not depend on matching text exactly:
 
 ```
-# 推荐（按行号修改）
+# Preferred: replace line 19
 action: edit_file(path="user_manager.py", line=19, new_string='    return user["city"]')
 
-# 注意：如果 new_string 内部包含双引号，请用单引号包裹整个字符串！
+# If new_string contains double quotes, wrap it in single quotes
 action: edit_file(path="file.py", line=10, new_string='print("hello")')
 ```
 
-### 示例
+### Example
 ```
-thought: 需要先读取文件查看代码内容
+thought: I need to read the file first
 action: read_file(path="examples/calculator.py")
 done: false
 
-thought: 发现bug在第15行，需要修改
+thought: The bug is on line 15
 action: edit_file(path="examples/calculator.py", line=15, new_string='    rate = 0.1')
 done: false
 
-thought: 已修复，需要验证运行结果
+thought: Fixed; run it to check
 action: exec(command="python examples/calculator.py")
 done: false
 ```
 
-## 重要规则
-1. action 后面必须紧跟括号和参数
-2. **修改代码时尽量用 line 模式**，不要用 old_string
-3. **new_string 如果包含双引号，请用单引号包裹！**
-4. 如果 done=true，action 那一行可以为空
-5. 绝对不要重复已经做过的操作！"""
+## Rules
+1. Write the arguments in parentheses right after the tool name
+2. **Edit by line number** rather than old_string when you can
+3. **If new_string contains double quotes, wrap it in single quotes**
+4. When done is true, the action line can be empty
+5. Never repeat an action you have already done"""
 
 
 class DebugAgent:
@@ -155,77 +155,77 @@ def create_interactive_agent(llm_client, tool_system, max_iterations: int = 50) 
     return InteractiveAgent(llm_client, tool_system, max_iterations)
 
 
+def _describe_args(fn) -> str:
+    """The arguments of fn as the model should write them, e.g. "path, offset=1, limit=100"."""
+    import inspect
+    try:
+        params = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return "..."
+    parts = []
+    for p in params:
+        if p.kind == p.VAR_POSITIONAL:
+            parts.append(f"*{p.name}")
+        elif p.kind == p.VAR_KEYWORD:
+            parts.append(f"**{p.name}")
+        elif p.default is p.empty:
+            parts.append(p.name)
+        else:
+            parts.append(f"{p.name}={p.default!r}")
+    return ", ".join(parts)
+
+
 class InteractiveAgent:
     """Interactive Agent - 支持用户确认的 Agent"""
 
-    SYSTEM_PROMPT = """你是一个 Interactive Coding Agent。你的任务是通过工具自动完成用户的编码请求。
+    SYSTEM_PROMPT = """You are an interactive coding agent. Your job is to complete the user's coding request by calling tools.
 
-## 工作流程
-1. 分析用户请求
-2. 规划执行步骤
-3. 使用工具执行任务
-4. 对于危险操作（修改文件、执行命令等），系统会要求确认
+## How to work
+1. Understand the request
+2. Work out the steps
+3. Carry them out with the tools
+4. Tools marked [asks the user first] (changing files, running commands) wait until the user approves them
 
-## 可用工具
+## Tools
 {tool_list}
 
-## 测试生成流程 (TDD)
-当用户要求生成测试时，按以下步骤：
+## Writing tests
+When the user asks for tests:
 
-1. 调用 `test_generate(source="源码路径")` 获取源码内容和目标路径
-2. 分析返回的 `source_content` 和 `framework_hint`
-3. 调用 `write_file(path=目标路径, content="完整的测试代码")` 写入生成的测试
-4. 调用 `test_run()` 验证测试通过
+1. Call `test_generate(source="path/to/source.py")` to get the source code and the test file path
+2. Read the returned `source_content` and `framework_hint`
+3. Call `write_file(path="path/to/test_file.py", content="the complete test code")` to write the tests
+4. Call `test_run()` to check that they pass
 
-## 输出格式（必须严格遵守！）
+## Reply format (follow it exactly)
 
-严格按照这个格式输出，**不要有任何其他内容**：
+Reply with these lines and **nothing else**:
 
 ```
-thought: 你的推理过程（1-2句话）
-action: 工具名(参数1="值1", 参数2="值2")
+thought: your reasoning (1-2 sentences)
+action: tool_name(arg1="value1", arg2="value2")
 done: true/false
-summary: 总结（仅当done=true时）
+summary: what you did (only when done is true)
 ```
 
-## 重要规则
-1. action 后面必须紧跟括号和参数
-2. 如果工具标记为 [需要确认]，你需要等待用户确认后才能执行
-3. 如果 done=true，action 那一行可以为空
-4. 生成测试时，先调用 test_generate 获取源码，再生成测试代码并用 write_file 写入
+## Rules
+1. Write the arguments in parentheses right after the tool name, using the argument names listed above
+2. A tool marked [asks the user first] runs only after the user approves it
+3. When done is true, the action line can be empty
+4. To write tests, call test_generate first, then write the test code with write_file
 
-## 规划模式
+## Plans
 
-当用户输入复杂任务时，先规划再执行：
-
-1. 分析任务需要的步骤
-2. 使用 plan(task) 生成执行计划
-3. 展示计划给用户确认
-4. 用户确认后使用 execute_plan(plan) 执行
-
-## Plan 输出格式
-
-规划时返回：
+When you are asked for a plan, don't call any tool. Reply in this format instead:
 ```
 plan: true
-summary: 任务总结（一句话）
+summary: the task in one line
 steps:
-  1. [tool_name] 步骤描述
-  2. [tool_name] 步骤描述
+  1. [tool_name] what this step does
+  2. [tool_name] what this step does
   ...
 ```
-
-## 执行格式
-
-执行时返回：
-```
-thought: 你的推理过程
-action: 工具名(参数)
-done: true/false
-summary: 总结
-```
-
-    """
+"""
 
     def __init__(self, llm_client, tool_system, max_iterations: int = 50, project_path: str = None):
         self.llm = llm_client
@@ -251,9 +251,10 @@ summary: 总结
         tools = self.tool_system.list_tools()
         tool_lines = []
         for name, tool_def in tools.items():
-            confirm_mark = " [需要确认]" if tool_def.confirmable else ""
+            confirm_mark = " [asks the user first]" if tool_def.confirmable else ""
             desc = tool_def.description or ""
-            tool_lines.append(f"- {name}{confirm_mark}: {desc}")
+            # With the argument names, so the model does not have to guess them
+            tool_lines.append(f"- {name}({_describe_args(tool_def.fn)}){confirm_mark}" + (f": {desc}" if desc else ""))
         return "\n".join(tool_lines)
 
     def _build_system_prompt(self) -> str:
@@ -525,13 +526,13 @@ summary: 总结
         tool_args = self.pending_action.get("tool_args", {})
 
         print("\n" + "=" * 50)
-        print("需要确认的操作：")
+        print("Waiting for your approval:")
         print(f"  Thought: {reasoning}")
         print(f"  Action: {tool_name}")
         for k, v in tool_args.items():
             print(f"    {k}: {v}")
         print("=" * 50)
-        print("选项: /confirm 确认 | /reject 拒绝 | /edit key=value 修改参数")
+        print("Options: /confirm to run it | /reject to refuse | /edit key=value to change an argument and run it")
         print("=" * 50 + "\n")
 
     def run_from_context(self, context: dict) -> str:
