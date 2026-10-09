@@ -32,9 +32,9 @@ python main.py --interactive
 ```bash
 python main.py --interactive
 > help  # Show available commands
-> 帮我写一个计算器模块
-> 为 src/calculator.py 生成测试
-> 修复登录功能的 bug
+> Write a calculator module
+> Generate tests for src/calculator.py
+> Fix the bug in the login function
 ```
 
 ### Debug Mode (Original)
@@ -111,11 +111,13 @@ CookieRookie/
 │   ├── memory.py            # Project memory
 │   ├── explorer.py          # Auto-detect project structure
 │   ├── git_tools.py         # Git operations
-│   └── test_tools.py        # Test execution & generation
-├── docs/
+│   ├── test_tools.py        # Test execution & generation (a tool module, not a test)
+│   └── test_*.py            # Tests (run with: python -m pytest agent)
+├── docs/superpowers/
 │   ├── specs/               # Design specifications
 │   └── plans/               # Implementation plans
-├── main.py                  # Entry point
+├── test/                    # Small buggy files to try debug mode on
+├── main.py                  # Entry point and LLM client
 ├── requirements.txt
 └── .env.example
 ```
@@ -126,7 +128,7 @@ CookieRookie/
 
 ```bash
 python main.py --interactive
-> 帮我写一个用户管理模块
+> Write a user management module
 # Agent plans and asks for confirmation
 > /confirm
 ```
@@ -135,7 +137,7 @@ python main.py --interactive
 
 ```bash
 python main.py --interactive
-> 为 src/calculator.py 生成测试
+> Generate tests for src/calculator.py
 # Agent creates test file and runs it
 ```
 
