@@ -514,9 +514,32 @@ CookieRookie Coding Agent - 可用命令
             print(f"Error: {e}")
 
 
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "--interactive":
+USAGE = """Usage:
+  python main.py --interactive        Work on tasks interactively (type help inside for commands)
+  python main.py "bug description"    Debug mode: find and fix the bug
+  python main.py --help               Show this help"""
+
+# Options main() reads itself (--yes and -y skip the questions before edits in debug mode)
+DEBUG_MODE_OPTIONS = ("--yes", "-y")
+
+
+def cli(argv) -> int:
+    """Pick the mode from the command line. Returns the exit code."""
+    first = argv[0] if argv else ""
+    if first in ("-h", "--help"):
+        print(USAGE)
+        return 0
+    if first == "--interactive":
         interactive_main()
-    else:
-        main()
+        return 0
+    # An option-like word (no spaces) that isn't an option: a typo such as --interactiv used to be
+    # taken as the bug report and sent to the model
+    if first.startswith("-") and " " not in first and first not in DEBUG_MODE_OPTIONS:
+        print(f"Unknown option: {first}\n\n{USAGE}")
+        return 2
+    main()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(cli(sys.argv[1:]))
