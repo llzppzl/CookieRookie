@@ -4,6 +4,7 @@ Debug Agent 工具集
 
 import os
 import re
+import signal
 import subprocess
 import glob
 import fnmatch
@@ -113,6 +114,17 @@ def edit_file(path: str, line: int = None, new_string: str = None,
         return {"success": False, "error": str(e)}
 
 
+def _kill_process_tree(proc: subprocess.Popen) -> None:
+    """Stop a command started by exec and every process it started (e.g. `server & sleep 99`)."""
+    if hasattr(os, "killpg"):
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+            return
+        except OSError:
+            pass
+    proc.kill()
+
+
 def exec(command: str, workdir: str = None, timeout: int = 30) -> dict:
     """执行 shell 命令
     
@@ -122,23 +134,42 @@ def exec(command: str, workdir: str = None, timeout: int = 30) -> dict:
         timeout: 超时秒数
     """
     try:
-        result = subprocess.run(
+        # stdin is closed: a command that asks for input (input(), a y/n prompt) gets end-of-file
+        # and fails at once, instead of waiting on the user's keyboard until the timeout.
+        # Its own session lets a timeout stop everything it started, not just the shell.
+        proc = subprocess.Popen(
             command,
             shell=True,
-            capture_output=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=timeout,
-            cwd=workdir
+            cwd=workdir,
+            start_new_session=True
         )
-        
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _kill_process_tree(proc)
+            stdout, stderr = proc.communicate()
+            # Keep what it printed before the timeout: it shows where the command got stuck
+            error = f"Command timeout after {timeout}s (stopped)"
+            printed = ((stdout or "") + (stderr or "")).strip()
+            if printed:
+                error += f". Last output:\n{printed[-500:]}"
+            return {
+                "success": False,
+                "error": error,
+                "stdout": stdout,
+                "stderr": stderr
+            }
+
         return {
-            "success": result.returncode == 0,
-            "returncode": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr
+            "success": proc.returncode == 0,
+            "returncode": proc.returncode,
+            "stdout": stdout,
+            "stderr": stderr
         }
-    except subprocess.TimeoutExpired:
-        return {"success": False, "error": f"Command timeout after {timeout}s"}
     except Exception as e:
         return {"success": False, "error": str(e)}
 
