@@ -174,24 +174,44 @@ def _test_run(path: str = None, pattern: str = "test_*.py", framework: str = "au
         }
 
 
-def _test_generate(source: str, target: str = None, framework: str = "pytest") -> dict:
-    """分析源码并准备生成测试 (内部实现)
+def _default_test_target(source: str) -> str:
+    """Where the tests for source go, in a tests/ folder at the project root (the current directory):
 
-    读取源码内容，返回给 LLM 生成测试用例。
+        src/calculator.py      -> tests/test_calculator.py
+        src/pkg/util.py        -> tests/pkg/test_util.py
+        service/src/api.py     -> service/tests/test_api.py
+        app/models.py          -> tests/app/test_models.py
+        calculator.py          -> tests/test_calculator.py
+
+    A file outside the current directory gets a tests/ folder next to it.
+    """
+    name = os.path.splitext(os.path.basename(source))[0]
+    rel = os.path.relpath(source)
+    if rel.startswith(os.pardir):  # outside the project
+        return os.path.join(os.path.dirname(source), "tests", f"test_{name}.py")
+
+    folders = list(os.path.normpath(os.path.dirname(rel)).split(os.sep))
+    folders = [f for f in folders if f not in ("", os.curdir)]
+    if "src" in folders:
+        i = folders.index("src")
+        folders = folders[:i] + ["tests"] + folders[i + 1:]
+    else:
+        folders = ["tests"] + folders
+    return os.path.join(*folders, f"test_{name}.py")
+
+
+def _test_generate(source: str, target: str = None, framework: str = "pytest") -> dict:
+    """Read a source file so the model can write tests for it (internal implementation)
 
     Args:
-        source: 源代码文件路径
-        target: 目标测试文件路径 (默认推导: src/calculator.py -> tests/test_calculator.py)
-        framework: 测试框架 (默认 pytest)
+        source: Source file path
+        target: Test file path (default: see _default_test_target, e.g. src/calculator.py ->
+            tests/test_calculator.py)
+        framework: Test framework (default pytest)
 
     Returns:
-        success: 是否成功
-        source: 源代码路径
-        source_content: 源码内容 (供 LLM 生成测试用)
-        target: 目标测试路径
-        framework: 使用的框架
-        suggested_imports: 建议的 import 语句
-        message: 提示信息
+        success, source, source_content (for the model to write tests from), target, framework,
+        suggested_imports, framework_hint and message
     """
     if not os.path.exists(source):
         return {
@@ -204,7 +224,6 @@ def _test_generate(source: str, target: str = None, framework: str = "pytest") -
             "suggested_imports": []
         }
 
-    # 读取源码内容
     try:
         with open(source, "r", encoding="utf-8") as f:
             source_content = f.read()
@@ -219,34 +238,22 @@ def _test_generate(source: str, target: str = None, framework: str = "pytest") -
             "suggested_imports": []
         }
 
-    # 推导 target 路径
     if target is None:
-        basename = os.path.basename(source)
-        name_without_ext = os.path.splitext(basename)[0]
-        dirname = os.path.dirname(source)
+        # Before (kept for comparison): "/src/" was replaced only with slashes on both sides, which a
+        # relative path like "src" never has, and "tests" was then added inside the source folder,
+        # so src/calculator.py got src/tests/test_calculator.py
+        target = _default_test_target(source)
+        # write_file can't create folders, so create the tests folder here
+        if os.path.dirname(target):
+            os.makedirs(os.path.dirname(target), exist_ok=True)
 
-        # 构建 tests 目录路径
-        if dirname:
-            tests_dir = os.path.join(
-                dirname.replace("/src/", "/tests/").replace("\\src\\", "\\tests\\"),
-                "tests"
-            )
-        else:
-            tests_dir = "tests"
-
-        os.makedirs(tests_dir, exist_ok=True)
-        target = os.path.join(tests_dir, f"test_{name_without_ext}.py")
-
-    # 分析源码，提取建议的 import
     suggested_imports = _extract_imports(source_content)
 
-    # 生成框架提示
-    basename = os.path.basename(source)
-    name_without_ext = os.path.splitext(basename)[0]
+    name_without_ext = os.path.splitext(os.path.basename(source))[0]
 
     if framework == "pytest":
         fixture_hint = f'''
-# pytest 建议 fixture:
+# Suggested pytest fixture:
 @pytest.fixture
 def {name_without_ext}_instance():
     from {name_without_ext} import ...
@@ -254,7 +261,7 @@ def {name_without_ext}_instance():
 '''
     elif framework == "unittest":
         fixture_hint = '''
-# unittest 建议 setUp:
+# Suggested unittest setUp:
 def setUp(self):
     from ... import ...
     self.instance = ...
@@ -265,23 +272,22 @@ def setUp(self):
     imports_section = "\n".join(suggested_imports) if suggested_imports else "# (no imports found)"
 
     framework_hint = f"""
-## {framework.upper()} 测试框架
+## {framework.upper()} tests
 
-### 源码文件: {source}
-### 要生成的测试文件: {target}
+### Source file: {source}
+### Test file to write: {target}
 
-### 源码中的 import:
+### Imports in the source:
 {imports_section}
 
 {fixture_hint}
 
-### 任务:
-请根据上面的源码内容，生成完整的测试用例。
-测试应该:
-1. 覆盖主要功能
-2. 包含边界条件测试
-3. 使用 assert 明确验证预期结果
-4. 生成可运行的测试代码
+### Task:
+Write complete tests for the source above. The tests should:
+1. Cover the main behavior
+2. Include edge cases
+3. Check expected results with clear asserts
+4. Run as they are
 """
 
     return {
