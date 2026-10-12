@@ -632,9 +632,9 @@ summary: 总结
         print("\n" + "=" * 50)
         print("需要确认的操作：")
         print(f"  Thought: {reasoning}")
-        print(f"  Action: {tool_name}")
-        for k, v in tool_args.items():
-            print(f"    {k}: {v}")
+        # The same preview as debug mode: the lines an edit changes, the start of a file it writes,
+        # the command it runs. The raw arguments put a whole file on one line and hid the old text
+        print(preview_action(tool_name, tool_args))
         print("=" * 50)
         print("选项: /confirm 确认 | /reject 拒绝 | /edit key=value 修改参数")
         print("=" * 50 + "\n")
