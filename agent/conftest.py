@@ -2,6 +2,16 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def allow_pytest_tmp_dirs(monkeypatch, tmp_path_factory):
+    """Tests change files in pytest's temporary folders, which are outside the working directory
+    that edit_file and write_file are limited to. Allow those folders too."""
+    from agent import tools
+    real_project_dirs = tools.project_dirs
+    base = str(tmp_path_factory.getbasetemp())
+    monkeypatch.setattr(tools, "project_dirs", lambda: real_project_dirs() + [base])
+
+
 # Tell pytest not to collect test_run and test_generate from test_tools as tests
 # These are utility functions, not test cases
 @pytest.hookimpl(tryfirst=True)
