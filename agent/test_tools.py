@@ -1,5 +1,5 @@
 """
-Test Tools - 测试执行和生成工具
+Test Tools - run and generate tests
 """
 
 import os
@@ -14,17 +14,17 @@ __test__ = False
 
 
 def _detect_framework(path: str = ".") -> str:
-    """检测测试框架
+    """Detect the test framework
 
-    检查 pytest.ini, pyproject.toml, test_*.py 内容
+    Looks at pytest.ini, pyproject.toml and the content of test_*.py
 
     Args:
-        path: 项目路径
+        path: project path
 
     Returns:
-        框架名称: pytest, unittest, jest, go
+        Framework name: pytest, unittest, jest, go
     """
-    # 检查 pytest.ini
+    # Check pytest.ini
     pytest_ini = os.path.join(path, "pytest.ini")
     if os.path.exists(pytest_ini):
         with open(pytest_ini, "r", encoding="utf-8") as f:
@@ -32,7 +32,7 @@ def _detect_framework(path: str = ".") -> str:
             if "[pytest]" in content:
                 return "pytest"
 
-    # 检查 pyproject.toml
+    # Check pyproject.toml
     pyproject = os.path.join(path, "pyproject.toml")
     if os.path.exists(pyproject):
         with open(pyproject, "r", encoding="utf-8") as f:
@@ -40,7 +40,7 @@ def _detect_framework(path: str = ".") -> str:
             if "pytest" in content:
                 return "pytest"
 
-    # 检查 test_*.py 文件内容
+    # Check the content of test_*.py files
     test_pattern = os.path.join(path, "test_*.py")
     import glob
     for test_file in glob.glob(test_pattern):
@@ -51,12 +51,12 @@ def _detect_framework(path: str = ".") -> str:
             if "jest" in content.lower():
                 return "jest"
 
-    # 检查 go.mod (go test)
+    # Check go.mod (go test)
     go_mod = os.path.join(path, "go.mod")
     if os.path.exists(go_mod):
         return "go"
 
-    # 检查 package.json (jest)
+    # Check package.json (jest)
     package_json = os.path.join(path, "package.json")
     if os.path.exists(package_json):
         with open(package_json, "r", encoding="utf-8") as f:
@@ -64,12 +64,12 @@ def _detect_framework(path: str = ".") -> str:
             if "jest" in content:
                 return "jest"
 
-    # 默认返回 pytest
+    # Default to pytest
     return "pytest"
 
 
 def _parse_passed(output: str) -> int:
-    """从测试输出中解析通过的测试数量"""
+    """Number of passed tests in the test output"""
     # pytest: "5 passed"
     match = re.search(r"(\d+)\s+passed", output)
     if match:
@@ -78,7 +78,7 @@ def _parse_passed(output: str) -> int:
 
 
 def _parse_failed(output: str) -> int:
-    """从测试输出中解析失败的测试数量"""
+    """Number of failed tests in the test output"""
     # pytest: "2 failed"
     match = re.search(r"(\d+)\s+failed", output)
     if match:
@@ -87,7 +87,7 @@ def _parse_failed(output: str) -> int:
 
 
 def _parse_errors(output: str) -> int:
-    """从测试输出中解析错误的测试数量"""
+    """Number of tests with errors in the test output"""
     # pytest: "1 error"
     match = re.search(r"(\d+)\s+error", output, re.IGNORECASE)
     if match:
@@ -108,14 +108,14 @@ def _test_run(path: str = None, pattern: str = "test_*.py", framework: str = "au
         framework: 测试框架 (auto/pytest/unittest/jest/go)
 
     Returns:
-        success: 是否成功
-        returncode: 返回码
-        framework: 检测到的框架
-        stdout: 标准输出
-        stderr: 标准错误
-        passed: 通过数量
-        failed: 失败数量
-        errors: 错误数量
+        success: whether it passed
+        returncode: exit code
+        framework: the detected framework
+        stdout: standard output
+        stderr: standard error
+        passed: number passed
+        failed: number failed
+        errors: number of errors
     """
     if path is None:
         path = "."
@@ -297,13 +297,13 @@ def setUp(self):
 
 
 def _extract_imports(source_content: str) -> list:
-    """从源码中提取 import 语句"""
+    """Extract the import lines from source code"""
     imports = []
     for line in source_content.split("\n"):
         stripped = line.strip()
         if stripped.startswith("import ") or stripped.startswith("from "):
             imports.append(stripped)
-    return imports[:10]  # 最多 10 个
+    return imports[:10]  # at most 10
 
 
 # Public API - wrapper functions for external use
@@ -316,37 +316,37 @@ def test_run(path: str = None, pattern: str = "test_*.py", framework: str = "aut
         framework: 测试框架 (auto/pytest/unittest/jest/go)
 
     Returns:
-        success: 是否成功
-        returncode: 返回码
-        framework: 检测到的框架
-        stdout: 标准输出
-        stderr: 标准错误
-        passed: 通过数量
-        failed: 失败数量
-        errors: 错误数量
+        success: whether it passed
+        returncode: exit code
+        framework: the detected framework
+        stdout: standard output
+        stderr: standard error
+        passed: number passed
+        failed: number failed
+        errors: number of errors
     """
     return _test_run(path=path, pattern=pattern, framework=framework)
 
 
 def test_generate(source: str, target: str = None, framework: str = "pytest") -> dict:
-    """分析源码，准备生成测试
+    """Read a source file to prepare writing tests for it
 
-    返回源码内容供 LLM 生成测试用例。
-    实际测试代码需要通过 LLM 生成后用 write_file 写入。
+    Returns the source so the LLM can write test cases.
+    The LLM writes the test code, which is then saved with write_file.
 
     Args:
-        source: 源代码文件路径
-        target: 目标测试文件路径 (默认推导)
-        framework: 测试框架 (默认 pytest)
+        source: source file path
+        target: test file path (worked out from source by default)
+        framework: test framework (pytest by default)
 
     Returns:
-        success: 是否成功
-        source: 源代码路径
-        source_content: 源码内容 (供 LLM 生成测试用)
-        target: 目标测试路径
-        framework: 使用的框架
-        suggested_imports: 建议的 import 语句
-        framework_hint: 框架特定的提示
-        message: 提示信息
+        success: whether it worked
+        source: source file path
+        source_content: the source code (for the LLM to write tests from)
+        target: test file path
+        framework: the framework used
+        suggested_imports: suggested import lines
+        framework_hint: framework-specific hints
+        message: a message
     """
     return _test_generate(source=source, target=target, framework=framework)

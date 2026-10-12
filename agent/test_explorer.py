@@ -7,7 +7,7 @@ from agent.explorer import auto_detect_structure
 
 class TestExplorer:
     def test_detect_python_project(self):
-        """测试检测 Python 项目"""
+        """Detects a Python project"""
         with tempfile.TemporaryDirectory() as tmpdir:
             os.makedirs(os.path.join(tmpdir, "src"))
             os.makedirs(os.path.join(tmpdir, "tests"))
@@ -17,14 +17,14 @@ class TestExplorer:
             assert structure["test_dir"] == "tests"
 
     def test_detect_no_structure(self):
-        """测试检测空项目"""
+        """Detects an empty project"""
         with tempfile.TemporaryDirectory() as tmpdir:
             structure = auto_detect_structure(tmpdir)
             assert structure["src_dir"] is None
             assert structure["test_dir"] is None
 
     def test_detect_main_file(self):
-        """测试检测主入口文件"""
+        """Detects the main entry file"""
         with tempfile.TemporaryDirectory() as tmpdir:
             with open(os.path.join(tmpdir, "main.py"), "w") as f:
                 f.write("")
@@ -33,7 +33,7 @@ class TestExplorer:
             assert structure["main_file"] == "main.py"
 
     def test_priority_src_over_lib(self):
-        """测试 src 优先于 lib"""
+        """src wins over lib"""
         with tempfile.TemporaryDirectory() as tmpdir:
             os.makedirs(os.path.join(tmpdir, "src"))
             os.makedirs(os.path.join(tmpdir, "lib"))
@@ -42,7 +42,7 @@ class TestExplorer:
             assert structure["src_dir"] == "src"
 
     def test_priority_tests_over_test(self):
-        """测试 tests 优先于 test"""
+        """tests wins over test"""
         with tempfile.TemporaryDirectory() as tmpdir:
             os.makedirs(os.path.join(tmpdir, "tests"))
             os.makedirs(os.path.join(tmpdir, "test"))
