@@ -1,0 +1,24 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cookierookie"
+version = "0.1.0"
+description = "An AI coding agent for the terminal that debugs, writes and tests code, asking before it changes anything"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.9"
+dependencies = ["requests"]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+cookierookie = "agent.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/llzppzl/CookieRookie"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["agent", "main.py"]

@@ -25,6 +25,18 @@ cp .env.example .env
 python main.py --interactive
 ```
 
+### Install as a command (optional)
+
+To use CookieRookie in any project folder without typing the path to `main.py`, install it from your clone:
+
+```bash
+pip install -e .
+cd /path/to/your/project
+cookierookie --interactive
+```
+
+`cookierookie` takes the same arguments as `python main.py`. It works on the files of the folder you run it in, and reads `.env` from the clone. Run `pip install -e ".[test]"` to get pytest as well.
+
 ## Two Modes
 
 ### Interactive Mode (Recommended)
