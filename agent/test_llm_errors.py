@@ -99,3 +99,18 @@ def test_max_tokens_is_sent_and_configurable(monkeypatch, tmp_path):
 
     env.write_text("ANTHROPIC_API_KEY=k\nMAX_TOKENS=lots\n", encoding="utf-8")
     assert main.load_config()["max_tokens"] == main.DEFAULT_MAX_TOKENS
+
+
+def test_long_replies_have_time_to_arrive(monkeypatch):
+    timeouts = []
+
+    def post(url, headers=None, json=None, timeout=None):
+        timeouts.append(timeout)
+        return reply("thought: done\naction:\ndone: true\nsummary: ok")
+
+    monkeypatch.setattr(requests, "post", post)
+    client().chat(debug_context())
+    # Nothing arrives until the whole reply is written, which takes minutes for thousands of tokens
+    connect, read = timeouts[0]
+    assert connect <= 30
+    assert read >= 300

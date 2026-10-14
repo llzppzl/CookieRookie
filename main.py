@@ -24,6 +24,10 @@ PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 # be small. Set MAX_TOKENS in .env to change it.
 DEFAULT_MAX_TOKENS = 8192
 
+# (connect, read) timeouts in seconds. The API sends nothing until the whole reply is written, and
+# writing up to DEFAULT_MAX_TOKENS can take minutes, so a 60-second read timeout cut long replies off.
+REQUEST_TIMEOUT = (10, 300)
+
 
 class LLMClient:
     """通用 LLM 客户端 (Anthropic 兼容模式)"""
@@ -65,7 +69,7 @@ class LLMClient:
                 f"{self.base_url}/v1/messages",
                 headers=headers,
                 json=data,
-                timeout=60
+                timeout=REQUEST_TIMEOUT
             )
         except requests.RequestException as e:
             return {"action": None, "fatal": True, "raw": "",
