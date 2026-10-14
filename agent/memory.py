@@ -53,6 +53,31 @@ class ProjectMemory:
         os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(self.data, f, indent=2, ensure_ascii=False)
+        self._keep_out_of_git()
+
+    def _keep_out_of_git(self) -> None:
+        """List the memory file in the project's .git/info/exclude. It holds this machine's full path
+        to the project, and `git add .` (which git_commit runs without files) would otherwise commit
+        it to the user's repository. The exclude file is local: it is never committed or pushed."""
+        git_dir = os.path.join(self.project_path, ".git")
+        if not os.path.isdir(git_dir):
+            return
+        name = os.path.basename(self.path)
+        exclude = os.path.join(git_dir, "info", "exclude")
+        try:
+            existing = ""
+            if os.path.exists(exclude):
+                with open(exclude, "r", encoding="utf-8") as f:
+                    existing = f.read()
+            if name in (line.strip().lstrip("/") for line in existing.splitlines()):
+                return
+            os.makedirs(os.path.dirname(exclude), exist_ok=True)
+            with open(exclude, "a", encoding="utf-8") as f:
+                if existing and not existing.endswith("\n"):
+                    f.write("\n")
+                f.write(f"/{name}\n")
+        except OSError:
+            pass  # memory still works; the file just shows up in git status
 
     def update_structure(self, info: dict) -> None:
         """Update the project layout (src_dir, test_dir, ...) and save"""

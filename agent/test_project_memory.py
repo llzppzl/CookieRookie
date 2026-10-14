@@ -46,6 +46,28 @@ def test_interactive_mode_uses_the_current_folder(tmp_path, monkeypatch):
     assert (tmp_path / ".agent-memory.json").exists()
 
 
+def test_memory_file_is_not_committed_to_the_users_repo(tmp_path):
+    import subprocess
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "app.py").write_text("print(1)\n")
+    agent = create_interactive_agent(MagicMock(), tool_system, project_path=str(tmp_path))
+    agent.memory.update_tools({"test_command": "pytest -q"})  # a second save adds no second line
+
+    exclude = (tmp_path / ".git" / "info" / "exclude").read_text()
+    assert exclude.count("/.agent-memory.json") == 1
+    # What git_commit stages when it is given no files
+    subprocess.run(["git", "-C", str(tmp_path), "add", "."], check=True)
+    staged = subprocess.run(["git", "-C", str(tmp_path), "diff", "--cached", "--name-only"],
+                            capture_output=True, text=True, check=True).stdout.split()
+    assert staged == ["app.py"]
+
+
+def test_memory_outside_a_git_repo_creates_no_git_folder(tmp_path):
+    create_interactive_agent(MagicMock(), tool_system, project_path=str(tmp_path))
+    assert (tmp_path / ".agent-memory.json").exists()
+    assert not (tmp_path / ".git").exists()
+
+
 def test_memory_text_is_english(tmp_path):
     (tmp_path / "tests").mkdir()
     agent = create_interactive_agent(MagicMock(), tool_system, project_path=str(tmp_path))
