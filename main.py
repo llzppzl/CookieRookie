@@ -223,7 +223,13 @@ class LLMClient:
 
                     # 对长文件做截断，但明确标出
                     max_chars = 2000
-                    snippet = content
+                    # With line numbers: the model is told to edit by line number (edit_file line=N),
+                    # and without them it had to count lines and often edited the one next to the bug
+                    first = str(lines).split("-")[0]
+                    first = int(first) if first.isdigit() else 1
+                    snippet = "".join(f"{n:>4} | {text}" for n, text in enumerate(content.splitlines(keepends=True), first))
+                    if snippet:
+                        snippet = "(line number | text; the numbers are not part of the file)\n" + snippet
                     truncated = False
                     if len(snippet) > max_chars:
                         snippet = snippet[:max_chars]
