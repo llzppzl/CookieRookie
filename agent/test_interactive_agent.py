@@ -43,8 +43,8 @@ class TestInteractiveAgent:
         mock_ts.register("edit_file", lambda x: x, confirmable=True, description="edit file")
         agent = InteractiveAgent(mock_llm, mock_ts)
         tool_list = agent._build_tool_list()
-        assert "read_file" in tool_list
-        assert "edit_file [需要确认]" in tool_list
+        assert "- read_file(x)" in tool_list
+        assert "- edit_file(x) [asks the user first]" in tool_list
 
     def test_pending_action_flow(self):
         from agent.core import InteractiveAgent
