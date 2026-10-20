@@ -109,6 +109,8 @@ If the API returns an error (wrong key, no quota) or a reply is cut off at `MAX_
 | Git | git_status, git_diff, git_commit, git_branch, git_log, git_checkout |
 | Test | test_run, test_generate |
 
+The git tools work on the project in the directory you start CookieRookie in. `git_commit` and `git_checkout` wait for your `/confirm`.
+
 ## Project Structure
 
 ```
