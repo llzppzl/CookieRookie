@@ -12,8 +12,12 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python: ["3.10", "3.11", "3.12", "3.13"]
         include:
+          # ubuntu-latest (24.04) has no Python 3.9 any more, but 3.9 is the python3 that comes
+          # with macOS, so keep testing it on 22.04
+          - os: ubuntu-22.04
+            python: "3.9"
           - os: macos-latest
             python: "3.12"
     steps:
