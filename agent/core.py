@@ -193,6 +193,10 @@ class DebugAgent:
             
             if done:
                 return summary or "Bug fixed!"
+
+            # API errors (wrong key, no quota) and cut-off replies won't get better by retrying
+            if response.get("fatal"):
+                return f"LLM error: {response['error']}"
             
             if not action:
                 print(f"Warning: No action in response, ending.")
@@ -391,6 +395,11 @@ summary: 总结
 
             if done:
                 return summary or "Task completed!"
+
+            # API errors (wrong key, no quota) and cut-off replies won't get better by retrying.
+            # A reply that just isn't in the expected format is retried: the next one may be fine
+            if response.get("fatal"):
+                return f"LLM error: {response['error']}"
 
             if not action:
                 print(f"Warning: No action in response, continuing.")
@@ -710,6 +719,11 @@ summary: 总结
 
             if done:
                 return summary or "Task completed!"
+
+            # API errors (wrong key, no quota) and cut-off replies won't get better by retrying.
+            # A reply that just isn't in the expected format is retried: the next one may be fine
+            if response.get("fatal"):
+                return f"LLM error: {response['error']}"
 
             if not action:
                 print(f"Warning: No action in response, continuing.")
