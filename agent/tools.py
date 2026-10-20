@@ -8,12 +8,46 @@ import signal
 import subprocess
 import fnmatch
 from typing import Dict, Callable, List
+from functools import wraps
 from .tool_system import tool_system
 
 # 延迟导入避免循环依赖
 def _get_test_tools():
     from . import test_tools
     return test_tools
+
+
+def project_dirs() -> List[str]:
+    """Folders the file tools may change: the one CookieRookie was started in"""
+    return [os.getcwd()]
+
+
+def is_inside_project(path: str) -> bool:
+    """True if path is inside one of project_dirs(), after resolving .. and symlinks"""
+    target = os.path.realpath(path)
+    for folder in project_dirs():
+        folder = os.path.realpath(folder)
+        try:
+            if os.path.commonpath([folder, target]) == folder:
+                return True
+        except ValueError:  # different drives on Windows
+            continue
+    return False
+
+
+def inside_project_only(tool: Callable) -> Callable:
+    """Make a file-changing tool refuse paths outside the project. Without this, a confused model
+    (or instructions planted in a file it reads) could change ~/.bashrc or ~/.ssh/authorized_keys."""
+    @wraps(tool)
+    def guarded(*args, **kwargs):
+        path = args[0] if args else kwargs.get("path")
+        # A missing path is left to the tool, so the model gets the tool's own argument error
+        if path is not None and not is_inside_project(str(path)):
+            return {"success": False,
+                    "error": f"{path} is outside the project folder ({os.getcwd()}). "
+                             "Only files inside it can be changed; use a path inside the project."}
+        return tool(*args, **kwargs)
+    return guarded
 
 
 # ========== 工具实现 ==========
@@ -54,6 +88,7 @@ def read_file(path: str, offset: int = 1, limit: int = 100) -> dict:
         return {"success": False, "error": str(e)}
 
 
+@inside_project_only
 def edit_file(path: str, line: int = None, new_string: str = None,
               old_string: str = None) -> dict:
     """编辑文件
@@ -236,6 +271,7 @@ def search_files(pattern: str, path: str = ".", file_glob: str = "*.py", use_reg
         return {"success": False, "error": str(e)}
 
 
+@inside_project_only
 def write_file(path: str, content: str) -> dict:
     """写入文件内容
 
