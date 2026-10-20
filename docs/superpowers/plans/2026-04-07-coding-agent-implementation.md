@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 将 CookieRookie 从 Debug Agent 打造成通用 Coding Agent，支持混合交互模式（自主执行+确认）、测试执行/生成、Git 集成
+**Goal:** Turn CookieRookie from a Debug Agent into a general-purpose Coding Agent, with a hybrid interaction mode (autonomous execution + confirmation), test execution/generation, and Git integration
 
-**Architecture:** 核心是 InteractiveAgent 类，负责任务规划、执行循环、确认机制。工具系统重构为插件化注册表（ToolSystem），支持 confirmable 标记。保持向后兼容，现有 DebugAgent 功能继续可用。
+**Architecture:** The core is the InteractiveAgent class, which handles task planning, the execution loop, and the confirmation mechanism. The tool system is refactored into a plugin-style registry (ToolSystem) that supports a confirmable flag. Backward compatibility is kept: existing DebugAgent features remain available.
 
-**Tech Stack:** Python 3, requests, subprocess (标准库)
+**Tech Stack:** Python 3, requests, subprocess (standard library)
 
 ---
 
@@ -14,33 +14,33 @@
 
 ```
 agent/
-├── __init__.py              # 导出 InteractiveAgent, ToolSystem
-├── core.py                  # DebugAgent → InteractiveAgent (重构)
-├── tools.py                 # 工具注册表 (重构，委托 ToolSystem)
-├── tool_system.py           # 新增：插件化工具系统
-├── git_tools.py             # 新增：Git 工具集
-├── test_tools.py            # 新增：测试工具集
-└── __pycache__/            # (自动生成)
+├── __init__.py              # Exports InteractiveAgent, ToolSystem
+├── core.py                  # DebugAgent → InteractiveAgent (refactor)
+├── tools.py                 # Tool registry (refactor, delegates to ToolSystem)
+├── tool_system.py           # New: plugin-style tool system
+├── git_tools.py             # New: Git toolset
+├── test_tools.py            # New: test toolset
+└── __pycache__/            # (auto-generated)
 
-docs/superpowers/plans/      # 本计划
-docs/superpowers/specs/     # 设计文档
+docs/superpowers/plans/      # This plan
+docs/superpowers/specs/     # Design docs
 
-main.py                      # 保持不变
+main.py                      # Unchanged
 ```
 
 ---
 
-## Task 1: ToolSystem 插件化工具注册表
+## Task 1: ToolSystem Plugin-Style Tool Registry
 
 **Files:**
 - Create: `agent/tool_system.py`
 - Test: `agent/test_tool_system.py`
 
-- [ ] **Step 1: 创建 tool_system.py 骨架**
+- [ ] **Step 1: Create the tool_system.py skeleton**
 
 ```python
 """
-ToolSystem - 插件化工具注册表
+ToolSystem - plugin-style tool registry
 """
 
 from typing import Dict, Callable, Any, Optional
@@ -49,7 +49,7 @@ from dataclasses import dataclass
 
 @dataclass
 class ToolDef:
-    """工具定义"""
+    """Tool definition"""
     name: str
     fn: Callable
     confirmable: bool = False
@@ -58,7 +58,7 @@ class ToolDef:
 
 
 class ToolSystem:
-    """工具注册与管理"""
+    """Tool registration and management"""
 
     def __init__(self):
         self._tools: Dict[str, ToolDef] = {}
@@ -71,7 +71,7 @@ class ToolSystem:
         description: str = "",
         args_schema: Optional[Dict[str, Any]] = None
     ) -> None:
-        """注册工具"""
+        """Register a tool"""
         self._tools[name] = ToolDef(
             name=name,
             fn=fn,
@@ -81,24 +81,24 @@ class ToolSystem:
         )
 
     def get(self, name: str) -> Optional[ToolDef]:
-        """获取工具定义"""
+        """Get a tool definition"""
         return self._tools.get(name)
 
     def list_tools(self) -> Dict[str, ToolDef]:
-        """列出所有工具"""
+        """List all tools"""
         return self._tools.copy()
 
     def is_confirmable(self, name: str) -> bool:
-        """检查工具是否需要确认"""
+        """Check whether a tool requires confirmation"""
         tool = self._tools.get(name)
         return tool.confirmable if tool else False
 
 
-# 全局实例
+# Global instance
 tool_system = ToolSystem()
 ```
 
-- [ ] **Step 2: 创建测试文件**
+- [ ] **Step 2: Create the test file**
 
 ```python
 """agent/test_tool_system.py"""
@@ -141,7 +141,7 @@ class TestToolSystem:
         assert ts.is_confirmable("nonexistent") is False
 ```
 
-- [ ] **Step 3: 运行测试验证**
+- [ ] **Step 3: Run the tests to verify**
 
 ```bash
 cd D:\PROJECTS\CookieRookie
@@ -159,17 +159,17 @@ git commit -m "feat: add plugin-based ToolSystem for tool registration"
 
 ---
 
-## Task 2: 基础文件工具（重构成使用 ToolSystem）
+## Task 2: Basic File Tools (Refactored to Use ToolSystem)
 
 **Files:**
-- Modify: `agent/tools.py` (重构，改用 ToolSystem)
-- Modify: `agent/__init__.py` (更新导出)
+- Modify: `agent/tools.py` (refactor to use ToolSystem)
+- Modify: `agent/__init__.py` (update exports)
 
-- [ ] **Step 1: 重构 tools.py 使用 ToolSystem**
+- [ ] **Step 1: Refactor tools.py to use ToolSystem**
 
 ```python
 """
-Debug Agent 工具集 - 重构为使用 ToolSystem
+Debug Agent toolset - refactored to use ToolSystem
 """
 
 import os
@@ -181,10 +181,10 @@ from typing import Dict, Callable, List
 from .tool_system import tool_system
 
 
-# ========== 工具实现 ==========
+# ========== Tool implementations ==========
 
 def read_file(path: str, offset: int = 1, limit: int = 100) -> dict:
-    """读取文件内容 (按行号)"""
+    """Read file contents (by line number)"""
     try:
         with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -211,7 +211,7 @@ def read_file(path: str, offset: int = 1, limit: int = 100) -> dict:
 
 def edit_file(path: str, line: int = None, new_string: str = None,
               old_string: str = None) -> dict:
-    """编辑文件"""
+    """Edit a file"""
     try:
         with open(path, "r", encoding="utf-8") as f:
             lines = f.readlines()
@@ -255,7 +255,7 @@ def edit_file(path: str, line: int = None, new_string: str = None,
 
 
 def write_file(path: str, content: str) -> dict:
-    """写入文件（新建或覆盖）"""
+    """Write a file (create or overwrite)"""
     try:
         os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
@@ -270,7 +270,7 @@ def write_file(path: str, content: str) -> dict:
 
 
 def exec(command: str, workdir: str = None, timeout: int = 30) -> dict:
-    """执行 shell 命令"""
+    """Run a shell command"""
     try:
         result = subprocess.run(
             command,
@@ -293,7 +293,7 @@ def exec(command: str, workdir: str = None, timeout: int = 30) -> dict:
 
 
 def search_files(pattern: str, path: str = ".", file_glob: str = "*.py", use_regex: bool = False) -> dict:
-    """搜索文件中的关键词"""
+    """Search files for a keyword"""
     try:
         matches = []
         glob_pattern = os.path.join(path, "**", file_glob)
@@ -330,7 +330,7 @@ def search_files(pattern: str, path: str = ".", file_glob: str = "*.py", use_reg
 
 
 def find_files(pattern: str, path: str = ".", use_regex: bool = False) -> dict:
-    """查找文件"""
+    """Find files"""
     try:
         matches: List[str] = []
 
@@ -359,56 +359,56 @@ def find_files(pattern: str, path: str = ".", use_regex: bool = False) -> dict:
         return {"success": False, "error": str(e)}
 
 
-# ========== 工具注册 ==========
+# ========== Tool registration ==========
 
 def register_base_tools():
-    """注册基础工具到 ToolSystem"""
+    """Register the basic tools with ToolSystem"""
     tool_system.register(
         "read_file",
         read_file,
         confirmable=False,
-        description="读取文件内容",
+        description="Read file contents",
         args_schema={"path": str, "offset": int, "limit": int}
     )
     tool_system.register(
         "edit_file",
         edit_file,
         confirmable=True,
-        description="编辑文件（按行号或字符串替换）",
+        description="Edit a file (by line number or string replacement)",
         args_schema={"path": str, "line": int, "new_string": str, "old_string": str}
     )
     tool_system.register(
         "write_file",
         write_file,
         confirmable=True,
-        description="写入文件（新建或覆盖）",
+        description="Write a file (create or overwrite)",
         args_schema={"path": str, "content": str}
     )
     tool_system.register(
         "exec",
         exec,
         confirmable=True,
-        description="执行 shell 命令",
+        description="Run a shell command",
         args_schema={"command": str, "workdir": str, "timeout": int}
     )
     tool_system.register(
         "search_files",
         search_files,
         confirmable=False,
-        description="搜索文件中的关键词",
+        description="Search files for a keyword",
         args_schema={"pattern": str, "path": str, "file_glob": str}
     )
     tool_system.register(
         "find_files",
         find_files,
         confirmable=False,
-        description="查找文件",
+        description="Find files",
         args_schema={"pattern": str, "path": str}
     )
 
 
 def register_tools() -> Dict[str, Callable]:
-    """注册所有可用工具（兼容旧接口）"""
+    """Register all available tools (compatible with the old interface)"""
     register_base_tools()
     return {
         "read_file": read_file,
@@ -420,7 +420,7 @@ def register_tools() -> Dict[str, Callable]:
     }
 ```
 
-- [ ] **Step 2: 更新 __init__.py**
+- [ ] **Step 2: Update __init__.py**
 
 ```python
 """agent/__init__.py"""
@@ -436,13 +436,13 @@ __all__ = [
 ]
 ```
 
-- [ ] **Step 3: 运行现有测试确保兼容**
+- [ ] **Step 3: Run the existing tests to ensure compatibility**
 
 ```bash
 python -m pytest test/ -v
 ```
 
-Expected: 现有测试全部 PASS
+Expected: all existing tests PASS
 
 - [ ] **Step 4: Commit**
 
@@ -453,69 +453,69 @@ git commit -m "refactor: migrate tools.py to use ToolSystem"
 
 ---
 
-## Task 3: InteractiveAgent 核心类
+## Task 3: InteractiveAgent Core Class
 
 **Files:**
-- Modify: `agent/core.py` (新增 InteractiveAgent)
+- Modify: `agent/core.py` (add InteractiveAgent)
 - Test: `agent/test_interactive_agent.py`
 
-- [ ] **Step 1: 添加 InteractiveAgent 类到 core.py**
+- [ ] **Step 1: Add the InteractiveAgent class to core.py**
 
-在 `DebugAgent` 类后添加：
+Add after the `DebugAgent` class:
 
 ```python
 class InteractiveAgent:
-    """交互式 Coding Agent - 混合模式（自主执行 + 关键步骤确认）"""
+    """Interactive Coding Agent - hybrid mode (autonomous execution + confirmation of key steps)"""
 
     def __init__(self, llm_client, tool_system, max_iterations: int = 50):
         self.llm = llm_client
         self.tool_system = tool_system
         self.max_iterations = max_iterations
-        self.pending_action = None  # 待确认的 action
-        self.user_modifications = None  # 用户修改过的参数
+        self.pending_action = None  # Action awaiting confirmation
+        self.user_modifications = None  # Parameters modified by the user
 
-    SYSTEM_PROMPT = """你是一个 Coding Agent。你的任务是理解用户需求，通过工具完成编码任务。
+    SYSTEM_PROMPT = """You are a Coding Agent. Your job is to understand the user's request and complete coding tasks using tools.
 
-## 工作流程
-1. 理解用户需求
-2. 规划实现步骤
-3. 执行计划（需要确认的操作会暂停等待用户）
-4. 验证结果
+## Workflow
+1. Understand the user's request
+2. Plan the implementation steps
+3. Execute the plan (operations that need confirmation pause and wait for the user)
+4. Verify the results
 
-## 可用工具（已注册）
+## Available tools (registered)
 {tool_list}
 
-## 确认机制
-标记为 confirmable=True 的工具在执行前需要用户确认。
-用户可以：/confirm 确认 /reject 拒绝并让你重新规划 /edit 修改参数
+## Confirmation mechanism
+Tools marked confirmable=True require user confirmation before execution.
+The user can: /confirm to confirm, /reject to reject and have you re-plan, /edit to modify parameters
 
-## 输出格式（严格遵守！）
+## Output format (follow strictly!)
 
-需要执行操作时：
+When you need to perform an operation:
 ```
-thought: 你的推理过程
-action: 工具名(参数1="值1", 参数2="值2")
+thought: your reasoning
+action: tool_name(param1="value1", param2="value2")
 done: false
 ```
 
-任务完成时：
+When the task is complete:
 ```
-thought: 已完成
+thought: completed
 done: true
-summary: 任务总结
+summary: task summary
 ```
 
-## 重要规则
-1. 先规划，再执行
-2. 优先使用 confirmable=False 的工具减少确认
-3. 修改代码前先读文件
-4. 每次修改后验证结果"""
+## Important rules
+1. Plan first, then execute
+2. Prefer tools with confirmable=False to reduce confirmations
+3. Read a file before modifying code
+4. Verify the result after each change"""
 
     def _build_tool_list(self) -> str:
-        """构建工具列表供 LLM 参考"""
+        """Build the tool list for the LLM's reference"""
         lines = []
         for name, tool in self.tool_system.list_tools().items():
-            confirm = " [需要确认]" if tool.confirmable else ""
+            confirm = " [needs confirmation]" if tool.confirmable else ""
             lines.append(f"- {name}: {tool.description}{confirm}")
         return "\n".join(lines)
 
@@ -523,21 +523,21 @@ summary: 任务总结
         return self.SYSTEM_PROMPT.format(tool_list=self._build_tool_list())
 
     def run(self, task: str) -> str:
-        """运行 Agent（混合模式入口）"""
+        """Run the Agent (hybrid mode entry point)"""
         context = self._build_initial_context(task)
 
         for i in range(self.max_iterations):
             print(f"\n=== Iteration {i + 1} ===")
 
-            # 如果有待确认的 action，先展示给用户
+            # If there is an action awaiting confirmation, show it to the user first
             if self.pending_action:
                 self._show_pending_action()
                 return "awaiting_confirmation"
 
-            # LLM 推理
+            # LLM reasoning
             response = self.llm.chat(context)
 
-            # 解析响应
+            # Parse the response
             action = response.get("action")
             reasoning = response.get("thought", "")
             done = response.get("done", False)
@@ -555,7 +555,7 @@ summary: 任务总结
             tool_name = action.get("tool")
             tool_args = action.get("args", {})
 
-            # 检查是否需要确认
+            # Check whether confirmation is needed
             if self.tool_system.is_confirmable(tool_name):
                 self.pending_action = {
                     "action": action,
@@ -565,14 +565,14 @@ summary: 任务总结
                 self._show_pending_action()
                 return "awaiting_confirmation"
 
-            # 直接执行
+            # Execute directly
             result = self._execute_tool(tool_name, tool_args)
             context = self._update_context(context, action, result, reasoning, i + 1)
 
         return "Max iterations reached"
 
     def confirm(self) -> str:
-        """用户确认，执行 pending action"""
+        """User confirmed: execute the pending action"""
         if not self.pending_action:
             return "No pending action to confirm"
 
@@ -584,14 +584,14 @@ summary: 任务总结
 
         result = self._execute_tool(tool_name, tool_args)
 
-        # 更新 context（需要重建因为 run 已经返回）
+        # Update context (needs rebuilding because run has already returned)
         context = {
             "task": self.pending_action.get("task", ""),
             "history": [],
             "system": self._build_system_prompt()
         }
 
-        # 从 history 重建
+        # Rebuild from history
         for h in self.pending_action.get("history", []):
             context["history"].append(h)
 
@@ -599,11 +599,11 @@ summary: 任务总结
 
         self.pending_action = None
 
-        # 继续执行
+        # Continue execution
         return self._continue_loop(context, iteration)
 
     def reject(self, new_instructions: str = None) -> str:
-        """用户拒绝，重新规划"""
+        """User rejected: re-plan"""
         if not self.pending_action:
             return "No pending action to reject"
 
@@ -611,14 +611,14 @@ summary: 任务总结
             "task": self.pending_action.get("task", ""),
             "history": self.pending_action.get("history", []),
             "system": self._build_system_prompt(),
-            "rejection_note": new_instructions or "用户拒绝了上一步操作，请重新规划"
+            "rejection_note": new_instructions or "The user rejected the previous operation. Please re-plan."
         }
 
         self.pending_action = None
         return self._continue_loop(context, 0)
 
     def edit_and_confirm(self, modified_args: dict) -> str:
-        """用户修改参数后确认"""
+        """User modified parameters, then confirmed"""
         if not self.pending_action:
             return "No pending action to edit"
 
@@ -627,24 +627,24 @@ summary: 任务总结
         return self.confirm()
 
     def _show_pending_action(self):
-        """展示待确认的 action"""
+        """Show the action awaiting confirmation"""
         action = self.pending_action["action"]
         tool_name = action.get("tool")
         tool_args = action.get("args", {})
         reasoning = self.pending_action["reasoning"]
 
         print("\n" + "=" * 50)
-        print("需要确认的操作：")
+        print("Operation requiring confirmation:")
         print(f"  Thought: {reasoning}")
         print(f"  Action: {tool_name}")
         for k, v in tool_args.items():
             print(f"    {k}: {v}")
         print("=" * 50)
-        print("选项: /confirm 确认 | /reject 拒绝 | /edit key=value 修改参数")
+        print("Options: /confirm confirm | /reject reject | /edit key=value modify parameters")
         print("=" * 50 + "\n")
 
     def _execute_tool(self, tool_name: str, tool_args: dict) -> dict:
-        """执行工具"""
+        """Execute a tool"""
         print(f"Executing: {tool_name}({tool_args})")
         tool_def = self.tool_system.get(tool_name)
         if not tool_def:
@@ -659,7 +659,7 @@ summary: 任务总结
 
     def _update_context(self, context: dict, action: dict, result: dict,
                        reasoning: str, iteration: int) -> dict:
-        """更新 context"""
+        """Update context"""
         context["history"].append({
             "action": action,
             "result": result,
@@ -669,7 +669,7 @@ summary: 任务总结
         return context
 
     def _continue_loop(self, context: dict, start_iteration: int) -> str:
-        """继续执行循环"""
+        """Continue the execution loop"""
         for i in range(start_iteration, self.max_iterations):
             print(f"\n=== Iteration {i + 1} ===")
 
@@ -712,7 +712,7 @@ summary: 任务总结
         return "Max iterations reached"
 
     def _build_initial_context(self, task: str) -> dict:
-        """构建初始 context"""
+        """Build the initial context"""
         return {
             "task": task,
             "history": [],
@@ -721,16 +721,16 @@ summary: 任务总结
 
 
 def create_agent(llm_client, max_iterations: int = 50) -> DebugAgent:
-    """创建 Debug Agent（兼容旧接口）"""
+    """Create a Debug Agent (compatible with the old interface)"""
     return DebugAgent(llm_client, max_iterations)
 
 
 def create_interactive_agent(llm_client, tool_system, max_iterations: int = 50) -> InteractiveAgent:
-    """创建 Interactive Agent"""
+    """Create an Interactive Agent"""
     return InteractiveAgent(llm_client, tool_system, max_iterations)
 ```
 
-- [ ] **Step 2: 创建测试文件**
+- [ ] **Step 2: Create the test file**
 
 ```python
 """agent/test_interactive_agent.py"""
@@ -785,7 +785,7 @@ class TestInteractiveAgent:
 
         tool_list = agent._build_tool_list()
         assert "read_file" in tool_list
-        assert "edit file [需要确认]" in tool_list
+        assert "edit file [needs confirmation]" in tool_list
 
     def test_pending_action_flow(self):
         from agent.core import InteractiveAgent
@@ -796,7 +796,7 @@ class TestInteractiveAgent:
 
         agent = InteractiveAgent(mock_llm, mock_ts)
 
-        # 模拟 LLM 返回需要确认的 action
+        # Simulate the LLM returning an action that needs confirmation
         mock_llm.chat.return_value = {
             "thought": "need to execute command",
             "action": {"tool": "exec", "args": {"command": "rm -rf /"}},
@@ -810,7 +810,7 @@ class TestInteractiveAgent:
         assert agent.pending_action["action"]["tool"] == "exec"
 ```
 
-- [ ] **Step 3: 运行测试**
+- [ ] **Step 3: Run the tests**
 
 ```bash
 python -m pytest agent/test_interactive_agent.py -v
@@ -827,17 +827,17 @@ git commit -m "feat: add InteractiveAgent with confirmation mechanism"
 
 ---
 
-## Task 4: test_tools.py - 测试框架
+## Task 4: test_tools.py - Test Framework
 
 **Files:**
 - Create: `agent/test_tools.py`
 - Test: `agent/test_test_tools.py`
 
-- [ ] **Step 1: 创建 test_tools.py**
+- [ ] **Step 1: Create test_tools.py**
 
 ```python
 """
-测试工具集 - 执行和生成测试用例
+Test toolset - run and generate test cases
 """
 
 import os
@@ -846,29 +846,29 @@ import fnmatch
 from typing import Optional, Dict, Any
 
 
-# ========== 工具实现 ==========
+# ========== Tool implementations ==========
 
 def test_run(path: Optional[str] = None, pattern: str = "test_*.py",
              framework: Optional[str] = None) -> dict:
     """
-    执行测试
+    Run tests
 
     Args:
-        path: 测试路径（文件或目录），默认当前目录
-        pattern: 文件匹配模式
-        framework: 测试框架（auto/pytest/unittest/none），auto 自动检测
+        path: test path (file or directory), defaults to the current directory
+        pattern: file match pattern
+        framework: test framework (auto/pytest/unittest/none); auto means auto-detect
     """
     path = path or "."
     framework = framework or "auto"
 
-    # 检测框架
+    # Detect the framework
     if framework == "auto":
         framework = _detect_framework(path)
 
     if framework == "none":
         return {"success": False, "error": "No test framework detected"}
 
-    # 构建命令
+    # Build the command
     if framework == "pytest":
         cmd = f"pytest {path}"
     elif framework == "unittest":
@@ -908,15 +908,15 @@ def test_run(path: Optional[str] = None, pattern: str = "test_*.py",
 def test_generate(source: str, target: Optional[str] = None,
                   framework: str = "pytest") -> dict:
     """
-    生成测试用例（由 LLM 生成，这里只做框架占位）
+    Generate test cases (generated by the LLM; this is only a framework placeholder)
 
-    实际生成依赖 LLM 调用
+    Actual generation depends on an LLM call
     """
     if not os.path.exists(source):
         return {"success": False, "error": f"Source file not found: {source}"}
 
     if target is None:
-        # 自动推导 target 路径
+        # Automatically derive the target path
         dir_name = os.path.dirname(source)
         base_name = os.path.basename(source)
         test_name = f"test_{base_name}"
@@ -930,18 +930,18 @@ def test_generate(source: str, target: Optional[str] = None,
         "source": source,
         "target": target,
         "framework": framework,
-        "message": f"生成测试用例到 {target}，框架: {framework}"
+        "message": f"Generating test cases into {target}, framework: {framework}"
     }
 
 
 def _detect_framework(path: str) -> str:
-    """自动检测测试框架"""
+    """Auto-detect the test framework"""
     if os.path.isfile(path):
         dir_path = os.path.dirname(path)
     else:
         dir_path = path
 
-    # 检查 pytest
+    # Check for pytest
     if os.path.exists(os.path.join(dir_path, "pytest.ini")):
         return "pytest"
     if os.path.exists(os.path.join(dir_path, "pyproject.toml")):
@@ -950,7 +950,7 @@ def _detect_framework(path: str) -> str:
             if "[tool.pytest" in content:
                 return "pytest"
 
-    # 检查 unittest
+    # Check for unittest
     for root, dirs, files in os.walk(dir_path):
         for f in files:
             if fnmatch.fnmatch(f, "test_*.py") or fnmatch.fnmatch(f, "*_test.py"):
@@ -959,32 +959,32 @@ def _detect_framework(path: str) -> str:
                     if "unittest" in content or "TestCase" in content:
                         return "unittest"
 
-    # 默认 pytest（最常用）
+    # Default to pytest (most common)
     return "pytest"
 
 
 def _parse_passed(output: str) -> int:
-    """从输出解析通过的测试数"""
+    """Parse the number of passed tests from the output"""
     import re
     match = re.search(r"(\d+) passed", output)
     return int(match.group(1)) if match else 0
 
 
 def _parse_failed(output: str) -> int:
-    """从输出解析失败的测试数"""
+    """Parse the number of failed tests from the output"""
     import re
     match = re.search(r"(\d+) failed", output)
     return int(match.group(1)) if match else 0
 
 
 def _parse_errors(output: str) -> int:
-    """从输出解析错误的测试数"""
+    """Parse the number of errored tests from the output"""
     import re
     match = re.search(r"(\d+) error", output)
     return int(match.group(1)) if match else 0
 ```
 
-- [ ] **Step 2: 创建测试**
+- [ ] **Step 2: Create the tests**
 
 ```python
 """agent/test_test_tools.py"""
@@ -997,7 +997,7 @@ from agent.test_tools import test_run, test_generate, _detect_framework
 class TestTestTools:
     def test_detect_pytest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            # 创建 pytest.ini
+            # Create pytest.ini
             with open(os.path.join(tmpdir, "pytest.ini"), "w") as f:
                 f.write("[pytest]\n")
 
@@ -1006,7 +1006,7 @@ class TestTestTools:
 
     def test_detect_unittest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            # 创建 test 文件
+            # Create the test file
             test_file = os.path.join(tmpdir, "test_sample.py")
             with open(test_file, "w") as f:
                 f.write("import unittest\nclass TestSample(unittest.TestCase):\n    pass\n")
@@ -1021,7 +1021,7 @@ class TestTestTools:
 
     def test_test_generate(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            # 创建源文件
+            # Create the source file
             source = os.path.join(tmpdir, "calculator.py")
             with open(source, "w") as f:
                 f.write("def add(a, b): return a + b\n")
@@ -1031,7 +1031,7 @@ class TestTestTools:
             assert result["source"] == source
 ```
 
-- [ ] **Step 3: 运行测试**
+- [ ] **Step 3: Run the tests**
 
 ```bash
 python -m pytest agent/test_test_tools.py -v
@@ -1048,17 +1048,17 @@ git commit -m "feat: add test_tools for test execution and generation"
 
 ---
 
-## Task 5: git_tools.py - Git 工具集
+## Task 5: git_tools.py - Git Toolset
 
 **Files:**
 - Create: `agent/git_tools.py`
 - Test: `agent/test_git_tools.py`
 
-- [ ] **Step 1: 创建 git_tools.py**
+- [ ] **Step 1: Create git_tools.py**
 
 ```python
 """
-Git 工具集
+Git toolset
 """
 
 import subprocess
@@ -1067,7 +1067,7 @@ from typing import Optional, List
 
 
 def git_status() -> dict:
-    """获取 Git 状态"""
+    """Get Git status"""
     try:
         result = subprocess.run(
             ["git", "status", "--porcelain"],
@@ -1086,7 +1086,7 @@ def git_status() -> dict:
 
 
 def git_diff(path: Optional[str] = None) -> dict:
-    """获取 Git diff"""
+    """Get Git diff"""
     try:
         cmd = ["git", "diff"]
         if path:
@@ -1107,15 +1107,15 @@ def git_diff(path: Optional[str] = None) -> dict:
 
 
 def git_commit(message: str, files: Optional[List[str]] = None) -> dict:
-    """提交更改"""
+    """Commit changes"""
     try:
-        # 先 add
+        # First add
         if files:
             subprocess.run(["git", "add"] + files, check=True)
         else:
             subprocess.run(["git", "add", "-A"], check=True)
 
-        # 再 commit
+        # Then commit
         result = subprocess.run(
             ["git", "commit", "-m", message],
             capture_output=True,
@@ -1139,7 +1139,7 @@ def git_commit(message: str, files: Optional[List[str]] = None) -> dict:
 
 
 def git_branch(list_branches: bool = False) -> dict:
-    """Git branch 操作"""
+    """Git branch operations"""
     try:
         if list_branches:
             result = subprocess.run(
@@ -1168,7 +1168,7 @@ def git_branch(list_branches: bool = False) -> dict:
 
 
 def git_log(limit: int = 10) -> dict:
-    """获取 Git 日志"""
+    """Get the Git log"""
     try:
         result = subprocess.run(
             ["git", "log", f"--oneline", f"-n{limit}"],
@@ -1186,7 +1186,7 @@ def git_log(limit: int = 10) -> dict:
 
 
 def git_checkout(branch: str, create: bool = False) -> dict:
-    """切换分支"""
+    """Switch branches"""
     try:
         cmd = ["git", "checkout"]
         if create:
@@ -1215,7 +1215,7 @@ def git_checkout(branch: str, create: bool = False) -> dict:
         return {"success": False, "error": str(e)}
 ```
 
-- [ ] **Step 2: 创建测试**
+- [ ] **Step 2: Create the tests**
 
 ```python
 """agent/test_git_tools.py"""
@@ -1228,7 +1228,7 @@ from agent.git_tools import git_status, git_diff, git_log
 
 class TestGitTools:
     def test_git_status(self):
-        # 在 git 仓库中测试
+        # Test inside a git repository
         result = git_status()
         assert "success" in result
         assert "files" in result
@@ -1238,7 +1238,7 @@ class TestGitTools:
     def test_git_log(self):
         result = git_log(limit=5)
         assert "success" in result or "error" in result
-        # 在 git 仓库中应该有 commits
+        # Inside a git repository there should be commits
 
     def test_git_diff(self):
         result = git_diff()
@@ -1246,13 +1246,13 @@ class TestGitTools:
         assert "diff" in result
 ```
 
-- [ ] **Step 3: 运行测试**
+- [ ] **Step 3: Run the tests**
 
 ```bash
 python -m pytest agent/test_git_tools.py -v
 ```
 
-Expected: tests PASS (在 git 仓库中)
+Expected: tests PASS (inside a git repository)
 
 - [ ] **Step 4: Commit**
 
@@ -1263,12 +1263,12 @@ git commit -m "feat: add git_tools for Git operations"
 
 ---
 
-## Task 6: 集成测试
+## Task 6: Integration Tests
 
 **Files:**
 - Create: `agent/test_integration.py`
 
-- [ ] **Step 1: 创建集成测试**
+- [ ] **Step 1: Create the integration tests**
 
 ```python
 """agent/test_integration.py"""
@@ -1281,8 +1281,8 @@ from agent import tools
 
 class TestIntegration:
     def test_full_tool_system_setup(self):
-        """测试完整工具系统初始化"""
-        # 清空并重新注册
+        """Test full tool system initialization"""
+        # Clear and re-register
         from agent import tools as tools_module
         tools_module.register_base_tools()
 
@@ -1295,7 +1295,7 @@ class TestIntegration:
         assert "find_files" in registered
 
     def test_confirmable_flags(self):
-        """测试 confirmable 标志"""
+        """Test the confirmable flag"""
         from agent import tools as tools_module
         tools_module.register_base_tools()
 
@@ -1305,7 +1305,7 @@ class TestIntegration:
         assert tool_system.is_confirmable("exec") is True
 
     def test_interactive_agent_with_mock_llm(self):
-        """测试 InteractiveAgent 与 mock LLM"""
+        """Test InteractiveAgent with a mock LLM"""
         mock_llm = MagicMock()
         mock_llm.chat.return_value = {
             "thought": "test",
@@ -1323,7 +1323,7 @@ class TestIntegration:
         assert agent.pending_action is not None
 ```
 
-- [ ] **Step 2: 运行集成测试**
+- [ ] **Step 2: Run the integration tests**
 
 ```bash
 python -m pytest agent/test_integration.py -v
@@ -1340,19 +1340,19 @@ git commit -m "test: add integration tests"
 
 ---
 
-## Task 7: main.py 入口更新
+## Task 7: main.py Entry Point Update
 
 **Files:**
-- Modify: `main.py` (添加 --interactive 模式)
+- Modify: `main.py` (add --interactive mode)
 
-- [ ] **Step 1: 更新 main.py 支持交互模式**
+- [ ] **Step 1: Update main.py to support interactive mode**
 
-在 main.py 末尾添加：
+Add at the end of main.py:
 
 ```python
 def interactive_main():
-    """交互模式入口"""
-    import readline  # 支持上下箭头
+    """Interactive mode entry point"""
+    import readline  # Supports up/down arrow keys
 
     config = load_config()
 
@@ -1363,7 +1363,7 @@ def interactive_main():
     print(f"CookieRookie Coding Agent ({config['model']})")
     print("Type 'exit' to quit, 'help' for commands\n")
 
-    # 初始化组件
+    # Initialize components
     from agent.tool_system import tool_system
     from agent import tools as tools_module
     tools_module.register_base_tools()
@@ -1425,12 +1425,12 @@ def interactive_main():
                     print(f"Tool: {agent.pending_action['action']['tool']}")
                 continue
 
-            # 普通任务
+            # Regular task
             current_task = user_input
             result = agent.run(user_input)
 
             if result == "awaiting_confirmation":
-                # 等待用户在下一轮确认
+                # Wait for the user to confirm in the next round
                 pass
             else:
                 print(f"\n{result}\n")
@@ -1442,7 +1442,7 @@ def interactive_main():
             print(f"Error: {e}")
 ```
 
-在 `if __name__ == "__main__":` 块中添加：
+Add inside the `if __name__ == "__main__":` block:
 
 ```python
 if __name__ == "__main__":
@@ -1453,12 +1453,12 @@ if __name__ == "__main__":
         main()
 ```
 
-- [ ] **Step 2: 测试 --interactive 模式（手动测试）**
+- [ ] **Step 2: Test --interactive mode (manual test)**
 
 ```bash
 python main.py --interactive
-# 输入 help 查看命令
-# 输入 exit 退出
+# Type help to see commands
+# Type exit to quit
 ```
 
 - [ ] **Step 3: Commit**
@@ -1470,25 +1470,25 @@ git commit -m "feat: add --interactive mode for collaborative coding"
 
 ---
 
-## 执行顺序
+## Execution Order
 
-| 顺序 | Task | 描述 |
+| Order | Task | Description |
 |------|------|------|
-| 1 | Task 1 | ToolSystem 插件化工具注册表 |
-| 2 | Task 2 | 基础文件工具（重构成使用 ToolSystem）|
-| 3 | Task 3 | InteractiveAgent 核心类 |
-| 4 | Task 4 | test_tools.py - 测试框架 |
-| 5 | Task 5 | git_tools.py - Git 工具集 |
-| 6 | Task 6 | 集成测试 |
-| 7 | Task 7 | main.py 入口更新 |
+| 1 | Task 1 | ToolSystem plugin-style tool registry |
+| 2 | Task 2 | Basic file tools (refactored to use ToolSystem) |
+| 3 | Task 3 | InteractiveAgent core class |
+| 4 | Task 4 | test_tools.py - test framework |
+| 5 | Task 5 | git_tools.py - Git toolset |
+| 6 | Task 6 | Integration tests |
+| 7 | Task 7 | main.py entry point update |
 
 ---
 
-## 预期产出
+## Expected Outcome
 
-完成后 CookieRookie 将具备：
-- ✅ 插件化工具系统
-- ✅ 交互式确认机制（/confirm /reject /edit）
-- ✅ 测试执行和生成能力
-- ✅ Git 操作能力
-- ✅ 向后兼容（Debug Agent 模式继续可用）
+When done, CookieRookie will have:
+- ✅ Plugin-style tool system
+- ✅ Interactive confirmation mechanism (/confirm /reject /edit)
+- ✅ Test execution and generation
+- ✅ Git operations
+- ✅ Backward compatibility (Debug Agent mode remains available)

@@ -1,72 +1,72 @@
-# CookieRookie 任务规划增强设计
+# CookieRookie Task Planning Enhancement Design
 
-**日期**: 2026-04-07
-**版本**: 1.0
-**状态**: 已批准
-
----
-
-## 1. 目标
-
-为 CookieRookie 添加多步骤任务规划能力，使 Agent 能够：
-- 理解复杂任务并分解为多个步骤
-- 展示完整执行计划供用户审核
-- 支持跳过、修改计划步骤
-- 自动执行非确认步骤，减少繁琐交互
+**Date**: 2026-04-07
+**Version**: 1.0
+**Status**: Approved
 
 ---
 
-## 2. 设计决策
+## 1. Goal
 
-| 维度 | 选择 | 理由 |
+Add multi-step task planning to CookieRookie so the Agent can:
+- Understand complex tasks and break them down into multiple steps
+- Show the full execution plan for the user to review
+- Support skipping and modifying plan steps
+- Execute non-confirmation steps automatically, reducing tedious interaction
+
+---
+
+## 2. Design Decisions
+
+| Dimension | Choice | Rationale |
 |------|------|------|
-| Plan 粒度 | 细粒度（目标步骤） | 计划透明，用户可提前干预 |
-| 执行方式 | 逐步执行（confirmable 才暂停） | 安全 + 效率平衡 |
-| 展示格式 | 编号列表 + confirmable 标记 | 清晰易读，便于引用 |
+| Plan granularity | Fine-grained (goal steps) | Transparent plan; the user can intervene early |
+| Execution mode | Step by step (pause only on confirmable) | Balances safety and efficiency |
+| Display format | Numbered list + confirmable marker | Clear, easy to read, easy to reference |
 
 ---
 
-## 3. 整体流程
+## 3. Overall Flow
 
 ```
-用户输入任务
+User enters a task
     │
     ▼
-┌─────────────────┐
-│  LLM 规划       │
-│  生成 Plan      │
-└────┬────────────┘
+┌─────────────────────────┐
+│  LLM planning           │
+│  Generate Plan          │
+└────┬────────────────────┘
      │
      ▼
-┌─────────────────┐
-│  展示 Plan      │
-│  等待用户确认    │
-└────┬────────────┘
+┌─────────────────────────┐
+│  Show Plan              │
+│  Await user approval    │
+└────┬────────────────────┘
      │
      ▼
-┌─────────────────┐
-│  执行 Plan       │
-│  confirmable → 暂停│
-│  非 confirmable → 自动│
-└────┬────────────┘
+┌─────────────────────────┐
+│  Execute Plan           │
+│  confirmable → pause    │
+│  non-confirmable → auto │
+└────┬────────────────────┘
      │
      ▼
-  报告结果
+  Report results
 ```
 
 ---
 
-## 4. Plan 结构
+## 4. Plan Structure
 
 ### 4.1 PlanStep
 
 ```python
 PlanStep = {
-    "step": int,           # 步骤编号
-    "tool": str,          # 工具名
-    "args": dict,         # 工具参数
-    "description": str,     # 步骤描述
-    "confirmable": bool    # 是否需要确认
+    "step": int,           # Step number
+    "tool": str,          # Tool name
+    "args": dict,         # Tool arguments
+    "description": str,     # Step description
+    "confirmable": bool    # Whether confirmation is required
 }
 ```
 
@@ -74,39 +74,39 @@ PlanStep = {
 
 ```python
 Plan = {
-    "steps": List[PlanStep],  # 步骤列表
-    "summary": str            # 任务总结
+    "steps": List[PlanStep],  # List of steps
+    "summary": str            # Task summary
 }
 ```
 
 ---
 
-## 5. Plan 展示格式
+## 5. Plan Display Format
 
 ```
-## 执行计划
+## Execution Plan
 
-1. [read_file] 读取 src/calculator.py 了解当前实现
-2. [write_file] 创建 tests/test_calculator.py 测试文件
-3. [edit_file] 实现 add() 函数
-4. [edit_file] 实现 subtract() 函数 ✅ 需要确认
-5. [test_run] 运行测试验证
+1. [read_file] Read src/calculator.py to understand the current implementation
+2. [write_file] Create the test file tests/test_calculator.py
+3. [edit_file] Implement the add() function
+4. [edit_file] Implement the subtract() function ✅ needs confirmation
+5. [test_run] Run tests to verify
 
-确认执行？ (/confirm /reject /skip N)
+Confirm execution? (/confirm /reject /skip N)
 ```
 
 ---
 
-## 6. InteractiveAgent 新增方法
+## 6. New InteractiveAgent Methods
 
 ### 6.1 plan()
 
 ```python
 def plan(self, task: str) -> Plan:
-    """让 LLM 生成任务的执行计划
+    """Have the LLM generate an execution plan for the task
 
     Returns:
-        Plan 对象，包含步骤列表和总结
+        Plan object containing the list of steps and a summary
     """
 ```
 
@@ -114,11 +114,11 @@ def plan(self, task: str) -> Plan:
 
 ```python
 def execute_plan(self, plan: Plan) -> str:
-    """执行 Plan
+    """Execute the Plan
 
-    - 非 confirmable 步骤自动执行
-    - confirmable 步骤暂停等待确认
-    - 返回执行结果
+    - Non-confirmable steps run automatically
+    - Confirmable steps pause and wait for confirmation
+    - Returns the execution result
     """
 ```
 
@@ -126,100 +126,100 @@ def execute_plan(self, plan: Plan) -> str:
 
 ```python
 def _format_plan(self, plan: Plan) -> str:
-    """格式化 Plan 为可读文本
+    """Format the Plan as readable text
 
     Returns:
-        格式化的计划文本
+        Formatted plan text
     """
 ```
 
 ---
 
-## 7. SYSTEM_PROMPT 改动
+## 7. SYSTEM_PROMPT Changes
 
-新增"规划模式"指导：
+Add "planning mode" guidance:
 
 ```
-## 规划模式
+## Planning Mode
 
-当用户输入复杂任务时，先规划再执行：
+When the user enters a complex task, plan first, then execute:
 
-1. 分析任务需要的步骤
-2. 使用 plan(task) 生成执行计划
-3. 展示计划给用户确认
-4. 用户确认后使用 execute_plan(plan) 执行
+1. Analyze the steps the task requires
+2. Use plan(task) to generate an execution plan
+3. Show the plan to the user for confirmation
+4. After the user confirms, use execute_plan(plan) to execute it
 
-## 输出格式
+## Output Format
 
-规划时返回：
+When planning, return:
 ```
 plan: true
-summary: 任务总结
+summary: task summary
 steps:
-  1. [tool] 描述
-  2. [tool] 描述
+  1. [tool] description
+  2. [tool] description
   ...
 ```
 
-执行时返回：
+When executing, return:
 ```
-thought: 你的推理过程
-action: 工具名(参数)
+thought: your reasoning
+action: tool_name(args)
 done: true/false
-summary: 总结
+summary: summary
 ```
 ```
 
 ---
 
-## 8. main.py 新增命令
+## 8. New main.py Commands
 
-| 命令 | 说明 |
+| Command | Description |
 |------|------|
-| `/plan` | 查看当前任务的执行计划 |
-| `/skip N` | 跳过第 N 步 |
-| `/confirm` | 确认执行（已存在） |
-| `/reject` | 拒绝计划（已存在） |
+| `/plan` | View the execution plan for the current task |
+| `/skip N` | Skip step N |
+| `/confirm` | Confirm execution (already exists) |
+| `/reject` | Reject the plan (already exists) |
 
 ---
 
-## 9. 新增/修改文件
+## 9. New/Modified Files
 
-### 修改
+### Modified
 
-| 文件 | 改动 |
+| File | Change |
 |------|------|
-| `agent/core.py` | 新增 plan(), execute_plan(), _format_plan() 方法，更新 SYSTEM_PROMPT |
-| `main.py` | 新增 /plan, /skip 命令 |
+| `agent/core.py` | Add plan(), execute_plan(), _format_plan() methods; update SYSTEM_PROMPT |
+| `main.py` | Add /plan, /skip commands |
 
 ---
 
-## 10. 实现顺序
+## 10. Implementation Order
 
-1. 修改 InteractiveAgent SYSTEM_PROMPT 增加规划模式
-2. 实现 plan() 方法
-3. 实现 execute_plan() 方法
-4. 实现 _format_plan() 方法
-5. 修改 main.py 增加 /plan, /skip 命令
-6. 测试
+1. Modify the InteractiveAgent SYSTEM_PROMPT to add planning mode
+2. Implement the plan() method
+3. Implement the execute_plan() method
+4. Implement the _format_plan() method
+5. Modify main.py to add /plan, /skip commands
+6. Testing
 
 ---
 
-## 11. 使用示例
+## 11. Usage Example
 
 ```bash
 python main.py --interactive
-> 帮我为计算器模块写测试并实现功能
+> Write tests for the calculator module and implement the features
 
-## 执行计划
+## Execution Plan
 
-1. [read_file] 读取 src/calculator.py
-2. [write_file] 创建 tests/test_calculator.py
-3. [edit_file] 实现 add() 函数 ✅ 需要确认
-4. [edit_file] 实现 subtract() 函数 ✅ 需要确认
-5. [test_run] 运行测试
+1. [read_file] Read src/calculator.py
+2. [write_file] Create tests/test_calculator.py
+3. [edit_file] Implement the add() function ✅ needs confirmation
+4. [edit_file] Implement the subtract() function ✅ needs confirmation
+5. [test_run] Run tests
 
-> /confirm  # 确认执行
+> /confirm  # Confirm execution
 
-# Agent 自动执行步骤 1, 2，然后暂停等待确认步骤 3
+# The Agent runs steps 1 and 2 automatically, then pauses for confirmation of step 3
 ```

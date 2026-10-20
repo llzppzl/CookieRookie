@@ -1,36 +1,36 @@
-# CookieRookie 项目记忆系统设计
+# CookieRookie Project Memory System Design
 
-**日期**: 2026-04-07
-**版本**: 1.0
-**状态**: 已批准
-
----
-
-## 1. 目标
-
-为 CookieRookie Coding Agent 添加项目记忆系统，使 Agent 能够记住项目结构、工具配置，在每次运行时自动加载上下文，无需重复了解项目。
+**Date**: 2026-04-07
+**Version**: 1.0
+**Status**: Approved
 
 ---
 
-## 2. 设计决策
+## 1. Goal
 
-| 维度 | 选择 | 理由 |
+Add a project memory system to the CookieRookie Coding Agent so the Agent can remember the project structure and tool configuration, and load this context automatically on every run, without having to learn the project again each time.
+
+---
+
+## 2. Design Decisions
+
+| Dimension | Choice | Rationale |
 |------|------|------|
-| 信息范围 | 项目结构 + 工具配置 | 平衡信息量和实用性 |
-| 存储方式 | JSON 文件 (`.agent-memory.json`) | 人类可读、可手动编辑、可 git 管理 |
-| 集成方式 | 自动注入到 Agent context | 无缝衔接，对用户透明 |
-| 自动探索 | 是，初始化时检测项目结构 | 开箱即用 |
+| Information scope | Project structure + tool configuration | Balances amount of information and usefulness |
+| Storage | JSON file (`.agent-memory.json`) | Human-readable, hand-editable, can be tracked in git |
+| Integration | Automatically injected into the Agent context | Seamless and transparent to the user |
+| Auto-exploration | Yes, detect project structure on initialization | Works out of the box |
 
 ---
 
-## 3. 架构
+## 3. Architecture
 
 ```
 ┌─────────────────────────────────────────┐
-│           ProjectMemory                  │
-│  - 项目结构 (目录、文件)                 │
-│  - 工具配置 (测试命令、启动命令)         │
-│  - 最后更新时间                          │
+│           ProjectMemory                 │
+│  - Project structure (dirs, files)      │
+│  - Tool config (test cmd, run cmd)      │
+│  - Last updated time                    │
 └────────────────┬────────────────────────┘
                  │
     ┌────────────┴────────────┐
@@ -39,15 +39,15 @@
 ┌─────────────┐      ┌─────────────┐
 │ .agent-     │      │ Agent       │
 │ memory.json │      │ Context     │
-│ (每个项目)  │ ───► │ (自动注入)   │
+│ (per proj.) │ ───► │ (injected)  │
 └─────────────┘      └─────────────┘
 ```
 
 ---
 
-## 4. 记忆文件格式
+## 4. Memory File Format
 
-**文件位置**: `{project_path}/.agent-memory.json`
+**File location**: `{project_path}/.agent-memory.json`
 
 ```json
 {
@@ -73,81 +73,81 @@
 
 ## 5. ProjectMemory API
 
-### 5.1 类定义
+### 5.1 Class Definition
 
 ```python
 class ProjectMemory:
-    """项目记忆管理器"""
+    """Project memory manager"""
 
     def __init__(self, project_path: str):
-        """初始化，加载或创建记忆文件"""
+        """Initialize; load or create the memory file"""
         self.path = os.path.join(project_path, ".agent-memory.json")
         self.data = self._load()
 
     def _load(self) -> dict:
-        """加载 .agent-memory.json，不存在则创建默认"""
+        """Load .agent-memory.json; create a default one if it does not exist"""
         if os.path.exists(self.path):
             with open(self.path, "r", encoding="utf-8") as f:
                 return json.load(f)
         return self._create_default()
 
     def save(self) -> None:
-        """持久化到文件"""
+        """Persist to file"""
         with open(self.path, "w", encoding="utf-8") as f:
             json.dump(self.data, f, indent=2, ensure_ascii=False)
 
     def update_structure(self, info: dict) -> None:
-        """更新项目结构"""
+        """Update the project structure"""
         self.data["structure"].update(info)
         self.data["updated_at"] = datetime.now().isoformat()
         self.save()
 
     def update_tools(self, info: dict) -> None:
-        """更新工具配置"""
+        """Update the tool configuration"""
         self.data["tools"].update(info)
         self.data["updated_at"] = datetime.now().isoformat()
         self.save()
 
     def get_context(self) -> str:
-        """获取注入 Agent 的字符串"""
-        lines = ["## 项目记忆"]
+        """Get the string to inject into the Agent"""
+        lines = ["## Project Memory"]
 
-        # 项目结构
+        # Project structure
         s = self.data.get("structure", {})
         if any(s.values()):
-            lines.append("### 项目结构")
+            lines.append("### Project Structure")
             for k, v in s.items():
                 if v:
                     lines.append(f"- {k}: {v}")
 
-        # 工具配置
+        # Tool configuration
         t = self.data.get("tools", {})
         if any(t.values()):
-            lines.append("### 常用命令")
+            lines.append("### Common Commands")
             for k, v in t.items():
                 if v:
                     lines.append(f"- {k}: {v}")
 
-        lines.append(f"\n最后更新: {self.data.get('updated_at', '未知')}")
+        lines.append(f"\nLast updated: {self.data.get('updated_at', 'unknown')}")
 
         return "\n".join(lines)
 
     def is_stale(self, days: int = 7) -> bool:
-        """检查记忆是否过期（超过指定天数）"""
+        """Check whether the memory is stale (older than the given number of days)"""
         updated = self.data.get("updated_at")
         if not updated:
             return True
-        # 比较日期...
+        # Compare dates...
         return False
 ```
 
 ---
 
-## 6. 自动探索项目结构
+## 6. Auto-Detecting Project Structure
 
 ```python
 def auto_detect_structure(project_path: str) -> dict:
-    """自动检测项目结构"""
+    """Automatically detect the project structure"""
 
     structure = {
         "src_dir": None,
@@ -156,19 +156,19 @@ def auto_detect_structure(project_path: str) -> dict:
         "test_pattern": "test_*.py"
     }
 
-    # 检测源码目录
+    # Detect the source directory
     for name in ["src", "lib", "app", "source"]:
         if os.path.isdir(os.path.join(project_path, name)):
             structure["src_dir"] = name
             break
 
-    # 检测测试目录
+    # Detect the test directory
     for name in ["tests", "test", "spec", "__tests__"]:
         if os.path.isdir(os.path.join(project_path, name)):
             structure["test_dir"] = name
             break
 
-    # 检测主入口文件
+    # Detect the main entry file
     for name in ["main.py", "index.js", "main.js", "app.py"]:
         if os.path.isfile(os.path.join(project_path, name)):
             structure["main_file"] = name
@@ -179,7 +179,7 @@ def auto_detect_structure(project_path: str) -> dict:
 
 ---
 
-## 7. InteractiveAgent 集成
+## 7. InteractiveAgent Integration
 
 ```python
 class InteractiveAgent:
@@ -190,10 +190,10 @@ class InteractiveAgent:
         self.max_iterations = max_iterations
         self.pending_action = None
 
-        # 初始化记忆
+        # Initialize memory
         if project_path:
             self.memory = ProjectMemory(project_path)
-            # 自动探索并更新记忆
+            # Auto-explore and update memory
             structure = auto_detect_structure(project_path)
             self.memory.update_structure(structure)
         else:
@@ -206,7 +206,7 @@ class InteractiveAgent:
             "system": self._build_system_prompt()
         }
 
-        # 自动注入记忆
+        # Automatically inject memory
         if self.memory:
             memory_context = self.memory.get_context()
             context["memory"] = memory_context
@@ -216,34 +216,34 @@ class InteractiveAgent:
 
 ---
 
-## 8. 新增/修改文件
+## 8. New/Modified Files
 
-### 新增
+### New
 
-| 文件 | 职责 |
+| File | Responsibility |
 |------|------|
-| `agent/memory.py` | ProjectMemory 类 |
+| `agent/memory.py` | ProjectMemory class |
 | `agent/explorer.py` | auto_detect_structure() |
 
-### 修改
+### Modified
 
-| 文件 | 改动 |
+| File | Change |
 |------|------|
-| `agent/core.py` | InteractiveAgent 集成记忆系统 |
+| `agent/core.py` | Integrate the memory system into InteractiveAgent |
 
 ---
 
-## 9. 使用方式
+## 9. Usage
 
-### 9.1 自动记忆
+### 9.1 Automatic Memory
 
 ```python
-# Agent 初始化时自动检测并保存
+# Detected and saved automatically when the Agent is initialized
 agent = InteractiveAgent(llm_client, tool_system, project_path="/path/to/project")
-# .agent-memory.json 自动创建
+# .agent-memory.json is created automatically
 ```
 
-### 9.2 记忆文件
+### 9.2 Memory File
 
 ```json
 {
@@ -265,31 +265,31 @@ agent = InteractiveAgent(llm_client, tool_system, project_path="/path/to/project
 }
 ```
 
-### 9.3 注入效果
+### 9.3 Injected Result
 
-Agent 每次运行时，context 中会包含：
+On every Agent run, the context will include:
 
 ```
-## 项目记忆
+## Project Memory
 
-### 项目结构
+### Project Structure
 - src_dir: src
 - test_dir: tests
 - main_file: main.py
 - test_pattern: test_*.py
 
-### 常用命令
+### Common Commands
 - test_command: python -m pytest
 - run_command: python main.py
 
-最后更新: 2026-04-07T10:00:00
+Last updated: 2026-04-07T10:00:00
 ```
 
 ---
 
-## 10. 实现顺序
+## 10. Implementation Order
 
-1. `agent/memory.py` - ProjectMemory 类
+1. `agent/memory.py` - ProjectMemory class
 2. `agent/explorer.py` - auto_detect_structure()
-3. 修改 `agent/core.py` - 集成记忆系统
-4. 测试
+3. Modify `agent/core.py` - integrate the memory system
+4. Testing
