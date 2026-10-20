@@ -519,9 +519,16 @@ def interactive_main():
     agent.current_plan = None
 
     while True:
+        # Ctrl+C at the prompt quits; Ctrl+C while a task runs only stops that task
         try:
             user_input = input("> ").strip()
+        except (KeyboardInterrupt, EOFError):
+            # EOFError: Ctrl+D, or stdin closed. It used to fall through to "except Exception",
+            # print "Error: " and ask again, forever
+            print()
+            break
 
+        try:
             if not user_input:
                 continue
 
@@ -635,8 +642,7 @@ Examples:
                 print(f"\n{result}\n")
 
         except KeyboardInterrupt:
-            print("\nInterrupted")
-            break
+            print("\nStopped the current task. Type exit (or press Ctrl+C again) to quit.")
         except Exception as e:
             print(f"Error: {e}")
 
