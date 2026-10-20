@@ -7,17 +7,19 @@ CookieRookie lets a language model read your files, change them and run commands
 | Tool | What it does | Asks first? |
 |------|--------------|-------------|
 | `read_file`, `search_files`, `find_files` | Read files and folder listings | No |
-| `edit_file`, `write_file` | Change or create files | Yes, in interactive mode |
-| `exec` | Run any shell command (`shell=True`, 30 s timeout by default) | Yes, in interactive mode |
+| `edit_file`, `write_file` | Change or create files, inside the project folder only | Yes |
+| `exec` | Run any shell command (`shell=True`, 30 s timeout by default) | Yes |
+| `git_status`, `git_diff`, `git_log`, `git_branch` | Show the project's git state | No |
+| `git_commit`, `git_checkout` | Commit, switch branches | Yes (interactive mode) |
 | `test_run` | Run the project's tests (pytest, unittest, jest or go test) | **No** |
 | `test_generate` | Read a source file and create the tests folder | No |
 
 Things to know:
 
-- **Interactive mode** (`python main.py --interactive`) pauses before `edit_file`, `write_file` and `exec` and waits for `/confirm`, `/reject` or `/edit`. Read the arguments before you confirm: a confirmed `exec` runs exactly that command.
-- **Debug mode** (`python main.py "bug"`) currently runs edits and commands **without asking** (#2 adds a confirmation before each one). Use it only on code you can restore (a clean git checkout) or in a container.
+- **Interactive mode** (`python main.py --interactive`) pauses before every tool marked "Yes" and waits for `/confirm`, `/reject` or `/edit`. Read the arguments before you confirm: a confirmed `exec` runs exactly that command.
+- **Debug mode** (`python main.py "bug"`) shows each edit and command and asks before running it. `--yes` turns the questions off: use it only on code you can restore (a clean git checkout) or in a container.
 - **Running tests runs code.** `test_run` doesn't ask, and tests execute whatever the project's test files contain. Don't point CookieRookie at code you don't trust.
-- Paths are not limited to the project folder: the model can ask to read or change any file your user account can access (#28 keeps `edit_file` and `write_file` inside the project).
+- `edit_file` and `write_file` refuse paths outside the folder CookieRookie was started in. Reading is not limited: the model can read any file your user account can access, and what it reads is sent to the API (below). `exec` runs with your user's rights, so a command can still touch anything; that's why it asks.
 
 ## What leaves your machine
 

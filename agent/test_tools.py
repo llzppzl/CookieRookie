@@ -294,7 +294,7 @@ def _test_generate(source: str, target: str = None, framework: str = "pytest") -
         # relative path like "src" never has, and "tests" was then added inside the source folder,
         # so src/calculator.py got src/tests/test_calculator.py
         target = _default_test_target(source)
-        # write_file can't create folders, so create the tests folder here
+        # Create the tests folder so it's there before the tests are written
         if os.path.dirname(target):
             os.makedirs(os.path.dirname(target), exist_ok=True)
 
