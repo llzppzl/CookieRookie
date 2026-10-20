@@ -161,6 +161,14 @@ done: false
 5. Never repeat an action you have already done"""
 
 
+def unknown_tool_result(tool_name: str, available) -> dict:
+    """The result the model sees when it calls a tool that does not exist."""
+    return {
+        "success": False,
+        "error": f"Unknown tool '{tool_name}'. Use one of: {', '.join(sorted(available))}"
+    }
+
+
 class DebugAgent:
     def __init__(self, llm_client, max_iterations: int = 10, ask=None):
         """ask(tool_name, args) decides on each edit and command before it runs and returns
@@ -210,7 +218,15 @@ class DebugAgent:
                 return f"Invalid action format: {action}"
             
             if tool_name not in self.tools:
-                return f"Unknown tool: {tool_name}"
+                # A made-up or misspelled tool name: tell the model and let it pick a real tool
+                print(f"Unknown tool: {tool_name}")
+                context["history"].append({
+                    "action": action,
+                    "result": unknown_tool_result(tool_name, self.tools),
+                    "thought": reasoning,
+                    "iteration": i + 1
+                })
+                continue
             
             # Edits and commands run only if the user says yes
             answer, reason = "yes", ""
@@ -417,7 +433,15 @@ steps:
             tools = self.tool_system.list_tools()
 
             if tool_name not in tools:
-                return f"Unknown tool: {tool_name}"
+                # A made-up or misspelled tool name: tell the model and let it pick a real tool
+                print(f"Unknown tool: {tool_name}")
+                context["history"].append({
+                    "action": action,
+                    "result": unknown_tool_result(tool_name, tools),
+                    "thought": reasoning,
+                    "iteration": i + 1
+                })
+                continue
 
             tool_def = tools[tool_name]
 
@@ -790,7 +814,15 @@ steps:
             tools = self.tool_system.list_tools()
 
             if tool_name not in tools:
-                return f"Unknown tool: {tool_name}"
+                # A made-up or misspelled tool name: tell the model and let it pick a real tool
+                print(f"Unknown tool: {tool_name}")
+                context["history"].append({
+                    "action": action,
+                    "result": unknown_tool_result(tool_name, tools),
+                    "thought": reasoning,
+                    "iteration": i + 1
+                })
+                continue
 
             tool_def = tools[tool_name]
 
