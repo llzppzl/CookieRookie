@@ -4,13 +4,13 @@ from typing import Dict
 
 
 def auto_detect_structure(project_path: str) -> Dict[str, str]:
-    """自动检测项目结构
+    """Detect the project layout from the folders and files that exist
 
     Args:
-        project_path: 项目根目录
+        project_path: the project root folder
 
     Returns:
-        包含检测到的项目结构信息的字典
+        The detected layout (src_dir, test_dir, main_file, test_pattern)
     """
     structure = {
         "src_dir": None,
@@ -19,21 +19,21 @@ def auto_detect_structure(project_path: str) -> Dict[str, str]:
         "test_pattern": "test_*.py"
     }
 
-    # 源码目录检测顺序（优先级）
+    # Source folder, in order of preference
     src_candidates = ["src", "lib", "app", "source"]
     for name in src_candidates:
         if os.path.isdir(os.path.join(project_path, name)):
             structure["src_dir"] = name
             break
 
-    # 测试目录检测顺序
+    # Test folder, in order of preference
     test_candidates = ["tests", "test", "spec", "__tests__"]
     for name in test_candidates:
         if os.path.isdir(os.path.join(project_path, name)):
             structure["test_dir"] = name
             break
 
-    # 主入口文件检测顺序
+    # Entry point file, in order of preference
     main_candidates = ["main.py", "index.js", "main.js", "app.py", "app/main.py"]
     for name in main_candidates:
         if os.path.isfile(os.path.join(project_path, name)):

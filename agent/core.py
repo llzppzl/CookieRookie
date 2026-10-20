@@ -259,9 +259,10 @@ def create_agent(llm_client, max_iterations: int = 50, ask=None) -> DebugAgent:
     return DebugAgent(llm_client, max_iterations, ask)
 
 
-def create_interactive_agent(llm_client, tool_system, max_iterations: int = 50) -> 'InteractiveAgent':
-    """创建 Interactive Agent"""
-    return InteractiveAgent(llm_client, tool_system, max_iterations)
+def create_interactive_agent(llm_client, tool_system, max_iterations: int = 50,
+                             project_path: str = None) -> 'InteractiveAgent':
+    """Create an InteractiveAgent. With project_path, it keeps project memory for that folder."""
+    return InteractiveAgent(llm_client, tool_system, max_iterations, project_path=project_path)
 
 
 def _describe_args(fn) -> str:

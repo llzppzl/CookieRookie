@@ -1,2 +1,4 @@
 .env
 docs/coding-agent-report.md
+# Project memory CookieRookie writes when run in this folder
+.agent-memory.json
