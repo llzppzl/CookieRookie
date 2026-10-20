@@ -466,7 +466,7 @@ def main():
     bug_report = args[0] if args else os.environ.get("DEBUG_BUG_REPORT", "")
     
     if not bug_report:
-        print("Usage: python main.py [--yes] \"Your bug description\"")
+        print(f"Usage: {PROG} [--yes] \"Your bug description\"")
         print("Or set DEBUG_BUG_REPORT environment variable")
         print("--yes, -y: run edits and commands without asking")
         return
@@ -656,10 +656,14 @@ Examples:
             print(f"Error: {e}")
 
 
-USAGE = """Usage:
-  python main.py --interactive        Work on tasks interactively (type help inside for commands)
-  python main.py "bug description"    Debug mode: find and fix the bug
-  python main.py --help               Show this help"""
+# How the user started CookieRookie: the installed `cookierookie` command (agent/cli.py sets this)
+# or `python main.py` from a checkout. The help shows the command they can actually run.
+PROG = os.environ.get("COOKIEROOKIE_PROG") or "python main.py"
+
+USAGE = f"""Usage:
+  {PROG} --interactive        Work on tasks interactively (type help inside for commands)
+  {PROG} "bug description"    Debug mode: find and fix the bug
+  {PROG} --help               Show this help"""
 
 # Options main() reads itself (--yes and -y skip the questions before edits in debug mode)
 DEBUG_MODE_OPTIONS = ("--yes", "-y")

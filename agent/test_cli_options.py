@@ -38,3 +38,18 @@ def test_bug_reports_still_go_to_debug_mode(monkeypatch):
     assert main.cli([]) == 0  # debug mode prints its own usage
     assert main.cli(["--interactive"]) == 0
     assert seen == ["debug", "debug", "debug", "debug", "interactive"]
+
+
+def test_help_names_the_command_that_was_run():
+    """pip's `cookierookie` command shows its own name, not `python main.py`"""
+    from agent import cli
+    env = {**os.environ, "COOKIEROOKIE_PROG": "cookierookie"}
+    installed = subprocess.run([sys.executable, os.path.join(REPO, "main.py"), "--help"], capture_output=True,
+                               text=True, env=env, stdin=subprocess.DEVNULL, timeout=60)
+    assert "cookierookie --interactive" in installed.stdout
+    assert "python main.py" not in installed.stdout
+    checkout = subprocess.run([sys.executable, os.path.join(REPO, "main.py"), "--help"], capture_output=True,
+                              text=True, stdin=subprocess.DEVNULL, timeout=60,
+                              env={k: v for k, v in os.environ.items() if k != "COOKIEROOKIE_PROG"})
+    assert "python main.py --interactive" in checkout.stdout
+    assert 'os.environ.setdefault("COOKIEROOKIE_PROG", "cookierookie")' in open(cli.__file__).read()

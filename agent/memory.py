@@ -27,14 +27,20 @@ class ProjectMemory:
         self.project_path = project_path
         self.path = os.path.join(project_path, ".agent-memory.json")
         self.data = self._load()
+        # Set once a save failed, so the note about it is printed only once
+        self._save_failed = False
 
     def _load(self) -> dict:
         """Load .agent-memory.json, or return the default memory if it is missing or unreadable"""
         if os.path.exists(self.path):
             try:
                 with open(self.path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except (json.JSONDecodeError, IOError):
+                    data = json.load(f)
+                # Valid JSON that is not a memory (a list, a string) would break every update
+                if isinstance(data, dict) and isinstance(data.get("structure"), dict) \
+                        and isinstance(data.get("tools"), dict):
+                    return data
+            except (json.JSONDecodeError, IOError, UnicodeDecodeError):
                 pass
         return self._create_default()
 
@@ -48,12 +54,22 @@ class ProjectMemory:
             "notes": []
         }
 
-    def save(self) -> None:
-        """Write the memory to .agent-memory.json"""
-        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
-        with open(self.path, "w", encoding="utf-8") as f:
-            json.dump(self.data, f, indent=2, ensure_ascii=False)
+    def save(self) -> bool:
+        """Write the memory to .agent-memory.json. Returns False if the project folder can't be
+        written to (read-only, owned by someone else): the memory then lasts for this session only,
+        instead of the PermissionError stopping interactive mode before it starts."""
+        try:
+            os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
+            with open(self.path, "w", encoding="utf-8") as f:
+                json.dump(self.data, f, indent=2, ensure_ascii=False)
+        except OSError as e:
+            if not self._save_failed:
+                print(f"Note: could not save the project memory to {self.path} "
+                      f"({e.strerror or e}); it is kept for this session only.")
+            self._save_failed = True
+            return False
         self._keep_out_of_git()
+        return True
 
     def _keep_out_of_git(self) -> None:
         """List the memory file in the project's .git/info/exclude. It holds this machine's full path
@@ -81,13 +97,20 @@ class ProjectMemory:
 
     def update_structure(self, info: dict) -> None:
         """Update the project layout (src_dir, test_dir, ...) and save"""
-        self.data["structure"].update(info)
-        self.data["updated_at"] = datetime.now().isoformat()
-        self.save()
+        self._update("structure", info)
 
     def update_tools(self, info: dict) -> None:
         """Update the project commands (test_command, ...) and save"""
-        self.data["tools"].update(info)
+        self._update("tools", info)
+
+    def _update(self, section: str, info: dict) -> None:
+        """Merge info into a section and save, but only if that changes something (or there is no
+        file yet). Interactive mode updates the layout on every start, which used to rewrite the
+        file each time and set "Last updated" to now, even when nothing in the project had changed."""
+        current = self.data[section]
+        if os.path.exists(self.path) and all(k in current and current[k] == v for k, v in info.items()):
+            return
+        current.update(info)
         self.data["updated_at"] = datetime.now().isoformat()
         self.save()
 
