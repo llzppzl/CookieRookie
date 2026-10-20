@@ -269,7 +269,7 @@ def register_base_tools() -> None:
     # 测试工具
     tt = _get_test_tools()
     tool_system.register("test_run", tt.test_run, confirmable=False,
-                        description="执行测试 (path, pattern, framework)")
+                        description="Run tests (path=project directory, pattern=test file, directory or glob; default: every test the framework finds, framework=auto/pytest/unittest/jest/go)")
     tool_system.register("test_generate", tt.test_generate, confirmable=False,
                         description="分析源码，准备生成测试")
 
