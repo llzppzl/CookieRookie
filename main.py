@@ -1,6 +1,6 @@
 """
-Debug Agent 入口
-支持多种 LLM 提供商 (Minimax, DeepSeek, Kimi, GLM, Anthropic)
+Debug Agent entry point
+Works with several LLM providers (Minimax, DeepSeek, Kimi, GLM, Anthropic)
 """
 
 import ast
@@ -20,7 +20,7 @@ from agent import DebugAgent
 from agent.core import create_interactive_agent, approve_all
 
 
-# 获取当前项目目录
+# The folder this file is in
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -50,7 +50,7 @@ class LLMClient:
             {"role": "user", "content": self._build_user_message(compact_history(context))}
         ]
         
-        # 添加 system prompt
+        # Add the system prompt
         system_prompt = context.get("system", "")
         
         headers = {
@@ -86,7 +86,7 @@ class LLMClient:
         
         result = response.json()
         
-        # 遍历所有 content blocks
+        # Go through all content blocks
         json_content = ""
         thinking_content = ""
         
@@ -97,7 +97,7 @@ class LLMClient:
                 elif block.get("type") == "thinking":
                     thinking_content = block.get("thinking", "")
         
-        # 打印 thinking（调试用）
+        # Print the thinking (for debugging)
         if thinking_content:
             print(f"\n=== LLM Thinking ===\n{thinking_content[:300]}...\n=====================\n")
         
@@ -118,7 +118,7 @@ class LLMClient:
         return {"action": None, "error": f"Failed to parse: {json_content[:200]}", "raw": json_content}
     
     def _parse_response(self, content: str) -> dict:
-        """解析 LLM 响应 - 支持多种格式"""
+        """Parse the LLM reply - accepts several formats"""
         content = content.strip()
         
         result = {
@@ -128,12 +128,12 @@ class LLMClient:
             "summary": ""
         }
         
-        # 提取 thought
+        # Extract thought
         thought_match = re.search(r'thought:\s*(.+?)(?=\naction:|$)', content, re.DOTALL)
         if thought_match:
             result["thought"] = thought_match.group(1).strip()
         
-        # 提取 action
+        # Extract action
         action_match = re.search(r'action:\s*(.+?)(?=\ndone:|$)', content, re.DOTALL)
         if action_match:
             action_str = action_match.group(1).strip()
@@ -143,12 +143,12 @@ class LLMClient:
                     tool_name, args = parsed
                     result["action"] = {"tool": tool_name, "args": args}
         
-        # 提取 done
+        # Extract done
         done_match = re.search(r'done:\s*(true|false)', content, re.IGNORECASE)
         if done_match:
             result["done"] = done_match.group(1).lower() == "true"
         
-        # 提取 summary
+        # Extract summary
         summary_match = re.search(r'summary:\s*(.+?)$', content, re.DOTALL)
         if summary_match:
             result["summary"] = summary_match.group(1).strip()
@@ -187,17 +187,17 @@ class LLMClient:
         """解析工具参数 - 支持多种格式"""
         args = {}
         
-        # 数字参数: key=123
+        # Number arguments: key=123
         for match in re.finditer(r'(\w+)=(\d+)', args_str):
             args[match.group(1)] = int(match.group(2))
         
-        # 双引号字符串: key="value"
+        # Double-quoted strings: key="value"
         for match in re.finditer(r'(\w+)="((?:[^"\\]|\\.)*)"', args_str):
             key = match.group(1)
             value = match.group(2).replace('\\"', '"').replace('\\\\', '\\')
             args[key] = value
         
-        # 单引号字符串: key='value'
+        # Single-quoted strings: key='value'
         for match in re.finditer(r'(\w+)=\'((?:[^\'\\]|\\.)*)\'', args_str):
             key = match.group(1)
             value = match.group(2).replace("\\'", "'").replace('\\\\', '\\')
@@ -206,7 +206,7 @@ class LLMClient:
         return args
     
     def _build_user_message(self, context: dict) -> str:
-        """构建用户消息"""
+        """Build the user message"""
         parts = []
         
         # Debug mode sends bug_report, interactive mode sends task
@@ -219,7 +219,7 @@ class LLMClient:
         if context.get("memory"):
             parts.append("\n" + context["memory"])
         
-        # 历史记录
+        # History
         if context["history"]:
             parts.append("\n## History (what you have done so far)")
             for h in context["history"]:
@@ -244,22 +244,22 @@ class LLMClient:
                     args_str = ", ".join(args_parts)
                     parts.append(f" Action: {tool_name}({args_str})")
                 
-                # ===== 旧的结果摘要逻辑（保留作学习对比） =====
+                # ===== Old result summary (kept for comparison while learning) =====
                 # if tool_name == "read_file" and result.get("success"):
-                #     parts.append(f" Result: 文件内容已读取")
+                #     parts.append(f" Result: file content read")
                 # elif tool_name == "exec" and result.get("success"):
                 #     stdout = result.get("stdout", "").strip()
                 #     if len(stdout) > 100:
                 #         stdout = stdout[:100] + "..."
                 #     parts.append(f" Result: {stdout}")
                 # elif tool_name == "edit_file" and result.get("success"):
-                #     parts.append(f" Result: 文件已修改")
+                #     parts.append(f" Result: file edited")
                 # elif not result.get("success"):
-                #     parts.append(f" Result: 失败 - {result.get('error', result.get('stderr', 'unknown'))}")
+                #     parts.append(f" Result: failed - {result.get('error', result.get('stderr', 'unknown'))}")
                 # else:
                 #     parts.append(f" Result: success")
 
-                # ===== 新的结果摘要逻辑：保留状态 + 关键细节 =====
+                # ===== New result summary: keep the status and the key details =====
                 success = result.get("success")
 
                 # Failures in one place (a test run that ran but had failures is shown by the test_run branch below)
@@ -268,12 +268,12 @@ class LLMClient:
                     parts.append(f" Result: failed - {error_msg}")
                     continue
 
-                # 没有 result 的情况
+                # No result
                 if result is None:
                     parts.append(" Result: (no result)")
                     continue
 
-                # 按工具类型分别给出「一句话总结 + 关键字段」
+                # Per tool: a one-line summary plus the key fields
                 if tool_name == "read_file" and success:
                     lines = result.get("lines", "?")
                     total = result.get("total", "?")
@@ -281,7 +281,7 @@ class LLMClient:
 
                     parts.append(f" Result: read lines {lines} (of {total}).")
 
-                    # 对长文件做截断，但明确标出
+                    # Cut long files, but say so
                     max_chars = 2000
                     snippet = content
                     truncated = False
@@ -338,7 +338,7 @@ class LLMClient:
                     matches = result.get("matches") or []
                     parts.append(f" Result: {count} matches.")
 
-                    # 展示前若干条匹配，避免一次性塞太多
+                    # Show the first few matches instead of all of them
                     max_items = 5
                     if matches:
                         parts.append(" First matches:")
@@ -384,11 +384,11 @@ class LLMClient:
                     except Exception:
                         parts.append(f" Result: {result}")
 
-            # 原来的“重要提示”在很多情况下与事实不符，这里注释掉保留作为学习对比
-            # parts.append("\n## 重要提示")
-            # parts.append("你已经在历史记录中看到了代码内容，请分析它并决定下一步该做什么！")
-            # parts.append("不要再次读取文件，除非你需要查看其他文件。")
-            # parts.append("绝对不要修改已经修复好的代码！")
+            # The old "important notes" were often wrong, so they are commented out and kept for comparison
+            # parts.append("\n## Important notes")
+            # parts.append("You have already seen the code in the history. Analyze it and decide what to do next!")
+            # parts.append("Do not read the file again unless you need to look at another file.")
+            # parts.append("Never change code that is already fixed!")
         
         return "\n".join(parts)
 
@@ -465,7 +465,7 @@ def main():
         print("--yes, -y: run edits and commands without asking")
         return
     
-    # 加载配置
+    # Load the settings
     config = load_config()
     
     if not config["api_key"]:
@@ -474,7 +474,7 @@ def main():
     
     print(f"Config: model={config['model']}, base_url={config['base_url']}")
     
-    # 创建客户端和 agent
+    # Create the client and the agent
     llm_client = LLMClient(
         config["api_key"], 
         config["model"], 
@@ -482,7 +482,7 @@ def main():
     )
     agent = DebugAgent(llm_client, ask=approve_all if approve else None)
     
-    # 运行
+    # Run
     print(f"Starting Debug Agent ({config['model']})...")
     print(f"Bug: {bug_report}\n")
     
@@ -491,7 +491,7 @@ def main():
 
 
 def interactive_main():
-    """交互模式入口"""
+    """Interactive mode entry point"""
     config = load_config()
 
     if not config["api_key"]:
@@ -501,7 +501,7 @@ def interactive_main():
     print(f"CookieRookie Coding Agent ({config['model']})")
     print("Type 'exit' to quit, 'help' for commands\n")
 
-    # 初始化组件
+    # Set up the components
     from agent.tool_system import tool_system
     from agent import tools as tools_module
     tools_module.register_base_tools()
@@ -635,11 +635,11 @@ Examples:
 """)
                 continue
 
-            # 普通任务
+            # A normal task
             result = agent.run(user_input)
 
             if result == "awaiting_confirmation":
-                # 等待用户在下一轮确认
+                # Wait for the user to confirm in the next round
                 pass
             else:
                 print(f"\n{result}\n")

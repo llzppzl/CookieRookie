@@ -87,7 +87,7 @@ class TestInteractiveAgent:
         mock_ts.register("exec", lambda cmd: {"success": True}, confirmable=True, description="execute")
         agent = InteractiveAgent(mock_llm, mock_ts)
 
-        # 先设置一个 pending_action
+        # Set up a pending_action first
         agent.pending_action = {
             "thought": "need to execute command",
             "action": {"tool": "exec", "args": {"cmd": "echo hello"}},
@@ -95,7 +95,7 @@ class TestInteractiveAgent:
             "tool_args": {"cmd": "echo hello"}
         }
 
-        # 设置后续调用返回 done
+        # Make the next call return done
         mock_llm.chat.return_value = {
             "thought": "task done",
             "action": None,

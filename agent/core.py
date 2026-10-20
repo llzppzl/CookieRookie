@@ -1,5 +1,5 @@
 """
-Debug Agent 核心逻辑
+Debug Agent core logic
 """
 
 import json
@@ -179,19 +179,19 @@ class DebugAgent:
         self.ask = ask or ask_in_terminal
 
     def run(self, bug_report: str) -> str:
-        """运行 agent"""
+        """Run the agent"""
         context = self._build_initial_context(bug_report)
         
         for i in range(self.max_iterations):
             print(f"\n=== Iteration {i + 1} ===")
             
-            # 1. LLM 推理
+            # 1. Ask the LLM
             response = self.llm.chat(context)
             
-            # 调试：打印原始响应
+            # Debugging: print the raw reply
             print(f"Raw response:\n{response.get('raw', 'N/A')[:500]}")
             
-            # 2. 解析 action
+            # 2. Parse the action
             action = response.get("action")
             reasoning = response.get("thought", "")
             done = response.get("done", False)
@@ -210,7 +210,7 @@ class DebugAgent:
                 print(f"Warning: No action in response, ending.")
                 return f"LLM did not provide action. Response: {response}"
             
-            # 3. 执行 action
+            # 3. Run the action
             tool_name = action.get("tool")
             tool_args = action.get("args", {})
             
@@ -251,7 +251,7 @@ class DebugAgent:
                 result_summary = result_summary[:300] + "..."
             print(f"Result: {result_summary}")
             
-            # 4. 更新 context
+            # 4. Update the context
             context["history"].append({
                 "action": action,
                 "result": result,
@@ -262,7 +262,7 @@ class DebugAgent:
         return "Max iterations reached"
     
     def _build_initial_context(self, bug_report: str) -> dict:
-        """构建初始上下文"""
+        """Build the first context"""
         return {
             "bug_report": bug_report,
             "history": [],
@@ -375,7 +375,7 @@ steps:
             self.memory = None
 
     def _build_tool_list(self) -> str:
-        """构建工具列表字符串"""
+        """Build the tool list text"""
         tools = self.tool_system.list_tools()
         tool_lines = []
         for name, tool_def in tools.items():
@@ -386,24 +386,24 @@ steps:
         return "\n".join(tool_lines)
 
     def _build_system_prompt(self) -> str:
-        """构建系统提示"""
+        """Build the system prompt"""
         tool_list = self._build_tool_list()
         return self.SYSTEM_PROMPT.format(tool_list=tool_list)
 
     def run(self, task: str) -> str:
-        """运行 agent"""
+        """Run the agent"""
         context = self._build_initial_context(task)
 
         for i in range(self.max_iterations):
             print(f"\n=== Iteration {i + 1} ===")
 
-            # 1. LLM 推理
+            # 1. Ask the LLM
             response = self.llm.chat(context)
 
-            # 调试：打印原始响应
+            # Debugging: print the raw reply
             print(f"Raw response:\n{response.get('raw', 'N/A')[:500]}")
 
-            # 2. 解析 action
+            # 2. Parse the action
             action = response.get("action")
             reasoning = response.get("thought", "")
             done = response.get("done", False)
@@ -423,7 +423,7 @@ steps:
                 print(f"Warning: No action in response, continuing.")
                 continue
 
-            # 3. 解析 action
+            # 3. Parse the action
             tool_name = action.get("tool")
             tool_args = action.get("args", {})
 
@@ -445,7 +445,7 @@ steps:
 
             tool_def = tools[tool_name]
 
-            # 如果需要确认，设置 pending_action
+            # If it needs confirmation, store it as pending_action
             if tool_def.confirmable:
                 self.pending_action = {
                     "thought": reasoning,
@@ -460,17 +460,17 @@ steps:
                 self._show_pending_action()
                 return "awaiting_confirmation"
 
-            # 执行工具
+            # Run the tool
             print(f"Executing: {tool_name}({tool_args})")
             result = tool_def.fn(**tool_args)
 
-            # 打印结果摘要
+            # Print a short summary of the result
             result_summary = json.dumps(result, ensure_ascii=False)
             if len(result_summary) > 300:
                 result_summary = result_summary[:300] + "..."
             print(f"Result: {result_summary}")
 
-            # 4. 更新 context
+            # 4. Update the context
             context["history"].append({
                 "action": action,
                 "result": result,
@@ -487,7 +487,7 @@ steps:
             "system": self._build_system_prompt()
         }
 
-        # 自动注入记忆
+        # Add the project memory automatically
         if self.memory:
             memory_context = self.memory.get_context()
             context["memory"] = memory_context
@@ -495,14 +495,14 @@ steps:
         return context
 
     def confirm(self) -> str:
-        """用户确认，执行 pending action"""
+        """The user confirmed: run the pending action"""
         if not self.pending_action:
             return "No pending action to confirm"
 
         action = self.pending_action["action"]
         tool_args = self.pending_action["tool_args"]
 
-        # 执行 pending action
+        # Run the pending action
         print(f"Executing confirmed action: {self.pending_action['tool_name']}({tool_args})")
         tools = self.tool_system.list_tools()
         tool_def = tools[self.pending_action["tool_name"]]
@@ -513,7 +513,7 @@ steps:
             result_summary = result_summary[:300] + "..."
         print(f"Result: {result_summary}")
 
-        # 重新构建 context 继续循环
+        # Build the context again and continue the loop
         context = {
             "task": self.pending_action.get("task", ""),
             "history": self.pending_action.get("history", []),
@@ -625,7 +625,7 @@ steps:
             result_summary = result_summary[:300] + "..."
         print(f"Result: {result_summary}")
 
-        # 重新构建 context 继续循环
+        # Build the context again and continue the loop
         context = {
             "task": self.pending_action.get("task", ""),
             "history": self.pending_action.get("history", []),
@@ -775,7 +775,7 @@ steps:
         return result
 
     def _show_pending_action(self):
-        """打印待确认的 action 供用户决策"""
+        """Print the pending action so the user can decide"""
         reasoning = self.pending_action.get("thought", "")
         tool_name = self.pending_action.get("tool_name", "")
         tool_args = self.pending_action.get("tool_args", {})
@@ -791,13 +791,13 @@ steps:
         print("=" * 50 + "\n")
 
     def run_from_context(self, context: dict) -> str:
-        """从给定 context 继续运行（内部使用）"""
+        """Continue running from the given context (internal)"""
         task = context.get("task", "")
 
         for i in range(self.max_iterations):
             print(f"\n=== Iteration {i + 1} ===")
 
-            # LLM 推理
+            # Ask the LLM
             response = self.llm.chat(context)
 
             print(f"Raw response:\n{response.get('raw', 'N/A')[:500]}")

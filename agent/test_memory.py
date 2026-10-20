@@ -8,7 +8,7 @@ from agent.memory import ProjectMemory
 
 class TestProjectMemory:
     def test_create_default_memory(self):
-        """测试创建默认记忆"""
+        """Creates the default memory"""
         with tempfile.TemporaryDirectory() as tmpdir:
             memory = ProjectMemory(tmpdir)
             assert memory.data["project_path"] == tmpdir
@@ -17,9 +17,9 @@ class TestProjectMemory:
             assert "updated_at" in memory.data
 
     def test_load_existing_memory(self):
-        """测试加载已存在的记忆"""
+        """Loads an existing memory"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            # 创建已有记忆
+            # Create an existing memory
             memory_file = os.path.join(tmpdir, ".agent-memory.json")
             existing_data = {
                 "project_path": tmpdir,
@@ -31,29 +31,29 @@ class TestProjectMemory:
             with open(memory_file, "w", encoding="utf-8") as f:
                 json.dump(existing_data, f)
 
-            # 加载
+            # Load it
             memory = ProjectMemory(tmpdir)
             assert memory.data["structure"]["src_dir"] == "src"
             assert memory.data["tools"]["test_command"] == "pytest"
 
     def test_save_memory(self):
-        """测试保存记忆"""
+        """Saves the memory"""
         with tempfile.TemporaryDirectory() as tmpdir:
             memory = ProjectMemory(tmpdir)
             memory.update_structure({"src_dir": "lib"})
             memory.save()
 
-            # 验证文件存在
+            # The file exists
             memory_file = os.path.join(tmpdir, ".agent-memory.json")
             assert os.path.exists(memory_file)
 
-            # 验证内容
+            # Check the content
             with open(memory_file, "r", encoding="utf-8") as f:
                 saved = json.load(f)
                 assert saved["structure"]["src_dir"] == "lib"
 
     def test_update_structure(self):
-        """测试更新项目结构"""
+        """Updates the project structure"""
         with tempfile.TemporaryDirectory() as tmpdir:
             memory = ProjectMemory(tmpdir)
             memory.update_structure({"src_dir": "source", "test_dir": "tests"})
@@ -61,14 +61,14 @@ class TestProjectMemory:
             assert memory.data["structure"]["test_dir"] == "tests"
 
     def test_update_tools(self):
-        """测试更新工具配置"""
+        """Updates the tool settings"""
         with tempfile.TemporaryDirectory() as tmpdir:
             memory = ProjectMemory(tmpdir)
             memory.update_tools({"test_command": "python -m pytest"})
             assert memory.data["tools"]["test_command"] == "python -m pytest"
 
     def test_get_context(self):
-        """测试获取注入字符串"""
+        """Builds the string injected into the agent"""
         with tempfile.TemporaryDirectory() as tmpdir:
             memory = ProjectMemory(tmpdir)
             memory.update_structure({"src_dir": "src", "test_dir": "tests"})

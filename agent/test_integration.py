@@ -8,8 +8,8 @@ from agent import tools
 
 class TestIntegration:
     def test_full_tool_system_setup(self):
-        """测试完整工具系统初始化"""
-        # 清空并重新注册
+        """The whole tool system initializes"""
+        # Clear and register again
         from agent import tools as tools_module
         tools_module.register_base_tools()
 
@@ -22,7 +22,7 @@ class TestIntegration:
         assert "find_files" in registered
 
     def test_confirmable_flags(self):
-        """测试 confirmable 标志"""
+        """The confirmable flag"""
         from agent import tools as tools_module
         tools_module.register_base_tools()
 
@@ -34,7 +34,7 @@ class TestIntegration:
         assert tool_system.is_confirmable("find_files") is False
 
     def test_interactive_agent_with_mock_llm(self):
-        """测试 InteractiveAgent 与 mock LLM - 使用 confirmable=True 的工具"""
+        """InteractiveAgent with a mock LLM, using a tool with confirmable=True"""
         mock_llm = MagicMock()
         mock_llm.chat.return_value = {
             "thought": "test",

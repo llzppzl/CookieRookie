@@ -1,5 +1,5 @@
 """
-ToolSystem - 插件化工具注册表
+ToolSystem - plugin-style tool registry
 """
 
 import functools
@@ -37,7 +37,7 @@ def checked(name: str, fn: Callable) -> Callable:
 
 @dataclass
 class ToolDef:
-    """工具定义"""
+    """A registered tool"""
     name: str
     fn: Callable
     confirmable: bool = False
@@ -46,7 +46,7 @@ class ToolDef:
 
 
 class ToolSystem:
-    """工具注册与管理"""
+    """Registers and looks up tools"""
 
     def __init__(self):
         self._tools: Dict[str, ToolDef] = {}
@@ -59,7 +59,7 @@ class ToolSystem:
         description: str = "",
         args_schema: Optional[Dict[str, Any]] = None
     ) -> None:
-        """注册工具"""
+        """Register a tool"""
         self._tools[name] = ToolDef(
             name=name,
             fn=checked(name, fn),
@@ -69,18 +69,18 @@ class ToolSystem:
         )
 
     def get(self, name: str) -> Optional[ToolDef]:
-        """获取工具定义"""
+        """Get a tool definition"""
         return self._tools.get(name)
 
     def list_tools(self) -> Dict[str, ToolDef]:
-        """列出所有工具"""
+        """List all tools"""
         return self._tools.copy()
 
     def is_confirmable(self, name: str) -> bool:
-        """检查工具是否需要确认"""
+        """Whether the tool needs the user's confirmation"""
         tool = self._tools.get(name)
         return tool.confirmable if tool else False
 
 
-# 全局实例
+# The shared instance
 tool_system = ToolSystem()

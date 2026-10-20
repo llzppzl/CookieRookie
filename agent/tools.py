@@ -1,5 +1,5 @@
 """
-Debug Agent 工具集
+Debug Agent tools
 """
 
 import os
@@ -11,7 +11,7 @@ from typing import Dict, Callable, List
 from functools import wraps
 from .tool_system import tool_system
 
-# 延迟导入避免循环依赖
+# Imported lazily to avoid a circular import
 def _get_test_tools():
     from . import test_tools
     return test_tools
@@ -53,12 +53,12 @@ def inside_project_only(tool: Callable) -> Callable:
 # ========== 工具实现 ==========
 
 def read_file(path: str, offset: int = 1, limit: int = 100) -> dict:
-    """读取文件内容 (按行号)
+    """Read a file by line numbers
     
     Args:
-        path: 文件路径
-        offset: 起始行号 (1-indexed)
-        limit: 最大行数
+        path: file path
+        offset: first line to read (1-indexed)
+        limit: maximum number of lines
     """
     try:
         offset, limit = int(offset), int(limit)
@@ -91,12 +91,12 @@ def read_file(path: str, offset: int = 1, limit: int = 100) -> dict:
 @inside_project_only
 def edit_file(path: str, line: int = None, new_string: str = None,
               old_string: str = None) -> dict:
-    """编辑文件
+    """Edit a file
     
     Args:
-        path: 文件路径
-        line: 行号 (优先使用)
-        new_string: 新内容
+        path: file path
+        line: line number (preferred)
+        new_string: the new content
         old_string: 旧内容 (备用)
     """
     if new_string is None:
@@ -112,12 +112,12 @@ def edit_file(path: str, line: int = None, new_string: str = None,
             line = int(line)
             if line < 1 or line > len(lines):
                 return {"success": False, "error": f"Line {line} out of range (1-{len(lines)})"}
-            # 保留原始实现，作为学习对比
+            # Original implementation, kept for comparison while learning
             # lines[line - 1] = new_string + "\n" if not new_string.endswith("\n") else new_string
             lines[line - 1] = new_string + "\n" if not new_string.endswith("\n") else new_string
             edit_mode = "line"
         elif old_string is not None:
-            # 字符串替换
+            # Replace a string
             content = "".join(lines)
             if old_string not in content:
                 return {"success": False, "error": "old_string not found in file"}
@@ -138,13 +138,13 @@ def edit_file(path: str, line: int = None, new_string: str = None,
         with open(path, "w", encoding="utf-8") as f:
             f.writelines(lines)
 
-        # 原始返回值（保留方便对比学习）
+        # Original return value (kept for comparison while learning)
         # return {"success": True, "message": f"File edited (line {line})"}
 
-        # 新的返回信息：尽量把关键信息暴露给上层 context
+        # New return value: expose the key details to the context above
         preview_new = None
         if line is not None and 1 <= line <= len(lines):
-            # 去掉换行后的预览
+            # Preview without the line break
             preview_new = lines[line - 1].rstrip("\n")
 
         return {
@@ -176,9 +176,9 @@ def exec(command: str, workdir: str = None, timeout: int = 30) -> dict:
     """执行 shell 命令
     
     Args:
-        command: 要执行的命令
-        workdir: 工作目录
-        timeout: 超时秒数
+        command: the command to run
+        workdir: working directory
+        timeout: timeout in seconds
     """
     try:
         # stdin is closed: a command that asks for input (input(), a y/n prompt) gets end-of-file
@@ -276,8 +276,8 @@ def write_file(path: str, content: str) -> dict:
     """写入文件内容
 
     Args:
-        path: 文件路径
-        content: 文件内容
+        path: file path
+        content: file content
     """
     try:
         # A new file may go in a folder that does not exist yet (e.g. tests/)
@@ -326,10 +326,10 @@ def find_files(pattern: str, path: str = ".", use_regex: bool = False) -> dict:
         return {"success": False, "error": str(e)}
 
 
-# ========== 工具注册 ==========
+# ========== Tool registration ==========
 
 def register_base_tools() -> None:
-    """注册基础工具到 ToolSystem"""
+    """Register the base tools in ToolSystem"""
     tool_system.register("read_file", read_file, confirmable=False)
     tool_system.register("edit_file", edit_file, confirmable=True)
     tool_system.register("write_file", write_file, confirmable=True)
@@ -337,16 +337,16 @@ def register_base_tools() -> None:
     tool_system.register("search_files", search_files, confirmable=False)
     tool_system.register("find_files", find_files, confirmable=False)
 
-    # 测试工具
+    # Test tools
     tt = _get_test_tools()
     tool_system.register("test_run", tt.test_run, confirmable=False,
                         description="Run tests (path=project directory, pattern=test file, directory or glob; default: every test the framework finds, framework=auto/pytest/unittest/jest/go)")
     tool_system.register("test_generate", tt.test_generate, confirmable=False,
-                        description="分析源码，准备生成测试")
+                        description="Read a source file to prepare writing tests for it")
 
 
 def register_tools() -> Dict[str, Callable]:
-    """注册所有可用工具"""
+    """Register all available tools"""
     register_base_tools()
     # The registered versions, which report wrong arguments back to the model instead of raising
     names = ["read_file", "edit_file", "write_file", "exec", "search_files", "find_files"]
