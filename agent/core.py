@@ -531,15 +531,31 @@ steps:
         return self.run_from_context(context)
 
     def reject(self, new_instructions: str = None) -> str:
-        """用户拒绝，重新规划"""
+        """Don't run the pending action. With instructions, the model hears why and goes on with
+        the same task; without, the task stops."""
         if not self.pending_action:
             return "No pending action to reject"
 
-        self.pending_action = None
+        pending, self.pending_action = self.pending_action, None
+        if not new_instructions:
+            return "Rejected. Provide new instructions to continue."
 
-        if new_instructions:
-            return self.run(new_instructions)
-        return "Rejected. Provide new instructions to continue."
+        # Before: run(new_instructions) started a new task made of only the reason, so the agent
+        # forgot what it was doing and everything it had read so far
+        context = {
+            "task": pending.get("task", ""),
+            "history": pending.get("history", []),
+            "system": self._build_system_prompt(),
+            "memory": pending.get("memory"),
+        }
+        context["history"].append({
+            "action": pending["action"],
+            "result": {"success": False,
+                       "error": f"The user declined this action. They said: {new_instructions}"},
+            "thought": pending["thought"],
+            "iteration": "rejected"
+        })
+        return self.run_from_context(context)
 
     @staticmethod
     def _coerce_args(fn, args: dict) -> dict:
