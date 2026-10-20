@@ -767,9 +767,9 @@ steps:
         print("\n" + "=" * 50)
         print("Waiting for your approval:")
         print(f"  Thought: {reasoning}")
-        print(f"  Action: {tool_name}")
-        for k, v in tool_args.items():
-            print(f"    {k}: {v}")
+        # The same preview as debug mode: the lines an edit changes, the start of a file it writes,
+        # the command it runs. The raw arguments put a whole file on one line and hid the old text
+        print(preview_action(tool_name, tool_args))
         print("=" * 50)
         print("Options: /confirm to run it | /reject to refuse | /edit key=value to change an argument and run it")
         print("=" * 50 + "\n")
