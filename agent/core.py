@@ -169,6 +169,34 @@ def unknown_tool_result(tool_name: str, available) -> dict:
     }
 
 
+# Replies in a row without an action the agent can run, before it gives up on the task
+MAX_REPLIES_WITHOUT_ACTION = 3
+
+
+def no_action_step(response: dict, iteration) -> dict:
+    """The history step for a reply that had no action in the reply format. Without it the model
+    got the same request again, usually wrote the same reply, and every iteration was an API call
+    that changed nothing."""
+    reply = (response.get("raw") or "").strip()
+    error = ("Your last reply had no action in the reply format, so nothing ran. Reply again with "
+             "the thought:, action: and done: lines, like action: read_file(path=\"app.py\"), "
+             "or with done: true and a summary if the task is finished.")
+    if reply:
+        error += f" Your reply began: {reply[:200]}"
+    return {
+        "action": {},
+        "result": {"success": False, "error": error},
+        "thought": response.get("thought", ""),
+        "iteration": iteration
+    }
+
+
+def gave_up_without_action(response: dict) -> str:
+    """What the user sees when the model kept replying without an action."""
+    return (f"Stopped: {MAX_REPLIES_WITHOUT_ACTION} replies in a row had no action in the reply format. "
+            f"The last one was:\n{(response.get('raw') or '').strip() or '(empty)'}")
+
+
 class DebugAgent:
     def __init__(self, llm_client, max_iterations: int = 10, ask=None):
         """ask(tool_name, args) decides on each edit and command before it runs and returns
@@ -181,7 +209,8 @@ class DebugAgent:
     def run(self, bug_report: str) -> str:
         """Run the agent"""
         context = self._build_initial_context(bug_report)
-        
+        replies_without_action = 0
+
         for i in range(self.max_iterations):
             print(f"\n=== Iteration {i + 1} ===")
             
@@ -206,10 +235,16 @@ class DebugAgent:
             if response.get("fatal"):
                 return f"LLM error: {response['error']}"
             
+            # A reply in the wrong format: tell the model what was wrong and let it answer again
             if not action:
-                print(f"Warning: No action in response, ending.")
-                return f"LLM did not provide action. Response: {response}"
-            
+                replies_without_action += 1
+                if replies_without_action >= MAX_REPLIES_WITHOUT_ACTION:
+                    return gave_up_without_action(response)
+                print("Warning: No action in the reply; asking the model to use the reply format.")
+                context["history"].append(no_action_step(response, i + 1))
+                continue
+            replies_without_action = 0
+
             # 3. Run the action
             tool_name = action.get("tool")
             tool_args = action.get("args", {})
@@ -393,6 +428,7 @@ steps:
     def run(self, task: str) -> str:
         """Run the agent"""
         context = self._build_initial_context(task)
+        replies_without_action = 0
 
         for i in range(self.max_iterations):
             print(f"\n=== Iteration {i + 1} ===")
@@ -419,9 +455,15 @@ steps:
             if response.get("fatal"):
                 return f"LLM error: {response['error']}"
 
+            # Tell the model what was wrong, so the next reply can be different
             if not action:
-                print(f"Warning: No action in response, continuing.")
+                replies_without_action += 1
+                if replies_without_action >= MAX_REPLIES_WITHOUT_ACTION:
+                    return gave_up_without_action(response)
+                print("Warning: No action in the reply; asking the model to use the reply format.")
+                context["history"].append(no_action_step(response, i + 1))
                 continue
+            replies_without_action = 0
 
             # 3. Parse the action
             tool_name = action.get("tool")
@@ -793,6 +835,7 @@ steps:
     def run_from_context(self, context: dict) -> str:
         """Continue running from the given context (internal)"""
         task = context.get("task", "")
+        replies_without_action = 0
 
         for i in range(self.max_iterations):
             print(f"\n=== Iteration {i + 1} ===")
@@ -817,9 +860,15 @@ steps:
             if response.get("fatal"):
                 return f"LLM error: {response['error']}"
 
+            # Tell the model what was wrong, so the next reply can be different
             if not action:
-                print(f"Warning: No action in response, continuing.")
+                replies_without_action += 1
+                if replies_without_action >= MAX_REPLIES_WITHOUT_ACTION:
+                    return gave_up_without_action(response)
+                print("Warning: No action in the reply; asking the model to use the reply format.")
+                context["history"].append(no_action_step(response, i + 1))
                 continue
+            replies_without_action = 0
 
             tool_name = action.get("tool")
             tool_args = action.get("args", {})
