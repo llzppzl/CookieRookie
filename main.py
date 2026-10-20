@@ -11,6 +11,8 @@ import re
 import shlex
 import requests
 
+from agent.history import compact_history
+
 # 添加当前目录到路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -43,8 +45,9 @@ class LLMClient:
     
     def chat(self, context: dict) -> dict:
         """调用 LLM API (Anthropic 兼容格式)"""
+        # Older steps lose their file contents and output, so long tasks still fit the context window
         messages = [
-            {"role": "user", "content": self._build_user_message(context)}
+            {"role": "user", "content": self._build_user_message(compact_history(context))}
         ]
         
         # 添加 system prompt
