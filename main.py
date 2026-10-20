@@ -36,7 +36,7 @@ REQUEST_TIMEOUT = (10, 300)
 class LLMClient:
     """通用 LLM 客户端 (Anthropic 兼容模式)"""
     
-    def __init__(self, api_key: str, model: str = "MiniMax-M2.5", base_url: str = "https://api.minimax.io/anthropic",
+    def __init__(self, api_key: str, model: str = "MiniMax-M3", base_url: str = "https://api.minimax.io/anthropic",
                  max_tokens: int = None):
         self.api_key = api_key
         self.model = model
@@ -67,8 +67,9 @@ class LLMClient:
             "system": system_prompt
         }
         
-        # "fatal" marks errors that retrying won't fix (wrong key, no quota, cut-off reply):
-        # the agent stops and shows them instead of calling the API again and again
+        # "fatal" stops the run and shows the error instead of calling the API again and again.
+        # Every API error and network failure is fatal for now, including ones a later retry
+        # could fix (429 rate limits, 5xx); so is a reply cut off at max_tokens.
         try:
             response = requests.post(
                 f"{self.base_url}/v1/messages",
@@ -420,7 +421,7 @@ def load_config():
     
     config = {
         "api_key": None,
-        "model": "MiniMax-M2.5",
+        "model": "MiniMax-M3",
         "base_url": "https://api.minimax.io/anthropic",
         "max_tokens": DEFAULT_MAX_TOKENS,
     }

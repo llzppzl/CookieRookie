@@ -66,7 +66,7 @@ Create a `.env` file:
 
 ```bash
 ANTHROPIC_API_KEY=your-api-key-here
-MODEL_ID=MiniMax-M2.5
+MODEL_ID=MiniMax-M3
 ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
 # Optional: longest reply in tokens (default 8192). Raise it if replies get cut off.
 MAX_TOKENS=8192
@@ -78,11 +78,13 @@ If the API returns an error (wrong key, no quota) or a reply is cut off at `MAX_
 
 | Provider | Model ID | Base URL |
 |----------|----------|----------|
-| Minimax | `MiniMax-M2.5` | `https://api.minimax.io/anthropic` |
-| DeepSeek | `deepseek-chat` | `https://api.deepseek.com/anthropic` |
-| Kimi | `kimi-k2.5` | `https://api.moonshot.ai/anthropic` |
-| GLM | `glm-5` | `https://api.z.ai/api/anthropic` |
-| Anthropic | `claude-sonnet-4-6` | `https://api.anthropic.com` |
+| MiniMax | `MiniMax-M3` | `https://api.minimax.io/anthropic` |
+| DeepSeek | `deepseek-flash` | `https://api.deepseek.com/anthropic` |
+| Kimi | see Kimi's docs | Anthropic-compatible endpoint: see [Kimi's docs](https://platform.kimi.ai/docs/guide/agent-support) |
+| GLM | `glm-5.3` | `https://api.z.ai/api/anthropic` |
+| Anthropic | `claude-sonnet-5-5` | `https://api.anthropic.com` |
+
+Model names change often. These were checked against each provider's docs on 2026-10-20; use the names your provider lists today.
 
 ## Interactive Commands
 
