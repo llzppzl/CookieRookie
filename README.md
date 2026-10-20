@@ -79,7 +79,7 @@ If the API returns an error (wrong key, no quota) or a reply is cut off at `MAX_
 | `help` | Show help information |
 | `/confirm` | Confirm and execute pending action |
 | `/reject` | Reject and ask agent to replan |
-| `/edit key=value` | Modify action parameters |
+| `/edit key=value` | Change some arguments of the pending action, then run it (e.g. `/edit line=19`, `/edit command="pytest -x"`) |
 | `/status` | Show pending action status |
 | `/plan <task>` | Ask for a step-by-step plan first; nothing runs yet |
 | `/plan` | Show the current plan |
