@@ -431,106 +431,15 @@ steps:
 
     def run(self, task: str) -> str:
         """Run the agent"""
-        context = self._build_initial_context(task)
-        replies_without_action = 0
-
-        for i in range(self.max_iterations):
-            print(f"\n=== Iteration {i + 1} ===")
-
-            # 1. Ask the LLM
-            response = self.llm.chat(context)
-
-            # Debugging: print the raw reply
-            print(f"Raw response:\n{response.get('raw', 'N/A')[:500]}")
-
-            # 2. Parse the action
-            action = response.get("action")
-            reasoning = response.get("thought", "")
-            done = response.get("done", False)
-            summary = response.get("summary", "")
-
-            print(f"Thought: {reasoning}")
-
-            if done:
-                return summary or "Task completed!"
-
-            # API errors (wrong key, no quota) and cut-off replies won't get better by retrying.
-            # A reply that just isn't in the expected format is retried: the next one may be fine
-            if response.get("fatal"):
-                return f"LLM error: {response['error']}"
-
-            # Tell the model what was wrong, so the next reply can be different
-            if not action:
-                replies_without_action += 1
-                if replies_without_action >= MAX_REPLIES_WITHOUT_ACTION:
-                    return gave_up_without_action(response)
-                print("Warning: No action in the reply; asking the model to use the reply format.")
-                context["history"].append(no_action_step(response, i + 1))
-                continue
-            replies_without_action = 0
-
-            # 3. Parse the action
-            tool_name = action.get("tool")
-            tool_args = action.get("args", {})
-
-            if not tool_name:
-                return f"Invalid action format: {action}"
-
-            tools = self.tool_system.list_tools()
-
-            if tool_name not in tools:
-                # A made-up or misspelled tool name: tell the model and let it pick a real tool
-                print(f"Unknown tool: {tool_name}")
-                context["history"].append({
-                    "action": action,
-                    "result": unknown_tool_result(tool_name, tools),
-                    "thought": reasoning,
-                    "iteration": i + 1
-                })
-                continue
-
-            tool_def = tools[tool_name]
-
-            # If it needs confirmation, store it as pending_action
-            if tool_def.confirmable:
-                self.pending_action = {
-                    "thought": reasoning,
-                    "action": action,
-                    "tool_name": tool_name,
-                    "tool_args": tool_args,
-                    # Keep the task and history so /confirm continues from here instead of starting over
-                    "task": context.get("task", ""),
-                    "history": context["history"],
-                    "memory": context.get("memory"),
-                }
-                self._show_pending_action()
-                return "awaiting_confirmation"
-
-            # Run the tool
-            print(f"Executing: {tool_name}({tool_args})")
-            result = tool_def.fn(**tool_args)
-
-            # Print a short summary of the result
-            result_summary = json.dumps(result, ensure_ascii=False)
-            if len(result_summary) > 300:
-                result_summary = result_summary[:300] + "..."
-            print(f"Result: {result_summary}")
-
-            # 4. Update the context
-            context["history"].append({
-                "action": action,
-                "result": result,
-                "thought": reasoning,
-                "iteration": i + 1
-            })
-
-        return "Max iterations reached"
+        return self.run_from_context(self._build_initial_context(task))
 
     def _build_initial_context(self, task: str) -> dict:
         context = {
             "task": task,
             "history": [],
-            "system": self._build_system_prompt()
+            "system": self._build_system_prompt(),
+            # Model replies used so far; max_iterations is the limit for the whole task
+            "steps": 0,
         }
 
         # Add the project memory automatically
@@ -545,7 +454,6 @@ steps:
         if not self.pending_action:
             return "No pending action to confirm"
 
-        action = self.pending_action["action"]
         tool_args = self.pending_action["tool_args"]
 
         # Run the pending action
@@ -559,22 +467,29 @@ steps:
             result_summary = result_summary[:300] + "..."
         print(f"Result: {result_summary}")
 
-        # Build the context again and continue the loop
-        context = {
-            "task": self.pending_action.get("task", ""),
-            "history": self.pending_action.get("history", []),
-            "system": self._build_system_prompt(),
-            "memory": self.pending_action.get("memory"),
-        }
-        context["history"].append({
-            "action": action,
-            "result": result,
-            "thought": self.pending_action["thought"],
-            "iteration": "confirmed"
-        })
-
+        context = self._resume_context(self.pending_action, result)
         self.pending_action = None
         return self.run_from_context(context)
+
+    def _resume_context(self, pending: dict, result: dict) -> dict:
+        """The context to go on with after the user answered a pending action: its task, its
+        history plus the action's result, and the steps already used. Before, the count started
+        again from 0, so every /confirm gave the task another max_iterations replies and the
+        history showed "Step 1" again after each one."""
+        context = {
+            "task": pending.get("task", ""),
+            "history": pending.get("history", []),
+            "system": self._build_system_prompt(),
+            "memory": pending.get("memory"),
+            "steps": pending.get("steps", 0),
+        }
+        context["history"].append({
+            "action": pending["action"],
+            "result": result,
+            "thought": pending["thought"],
+            "iteration": pending.get("steps") or "confirmed"
+        })
+        return context
 
     def reject(self, new_instructions: str = None) -> str:
         """Don't run the pending action. With instructions, the model hears why and goes on with
@@ -588,20 +503,7 @@ steps:
 
         # Before: run(new_instructions) started a new task made of only the reason, so the agent
         # forgot what it was doing and everything it had read so far
-        context = {
-            "task": pending.get("task", ""),
-            "history": pending.get("history", []),
-            "system": self._build_system_prompt(),
-            "memory": pending.get("memory"),
-        }
-        context["history"].append({
-            "action": pending["action"],
-            "result": {"success": False,
-                       "error": f"The user declined this action. They said: {new_instructions}"},
-            "thought": pending["thought"],
-            "iteration": "rejected"
-        })
-        return self.run_from_context(context)
+        return self.run_from_context(self._resume_context(pending, declined(new_instructions)))
 
     @staticmethod
     def _coerce_args(fn, args: dict) -> dict:
@@ -671,20 +573,7 @@ steps:
             result_summary = result_summary[:300] + "..."
         print(f"Result: {result_summary}")
 
-        # Build the context again and continue the loop
-        context = {
-            "task": self.pending_action.get("task", ""),
-            "history": self.pending_action.get("history", []),
-            "system": self._build_system_prompt(),
-            "memory": self.pending_action.get("memory"),
-        }
-        context["history"].append({
-            "action": action,
-            "result": result,
-            "thought": self.pending_action["thought"],
-            "iteration": "edit_confirmed"
-        })
-
+        context = self._resume_context(self.pending_action, result)
         self.pending_action = None
         return self.run_from_context(context)
 
@@ -838,10 +727,13 @@ steps:
 
     def run_from_context(self, context: dict) -> str:
         """Continue running from the given context (internal)"""
-        task = context.get("task", "")
         replies_without_action = 0
+        context.setdefault("steps", 0)
 
-        for i in range(self.max_iterations):
+        while context["steps"] < self.max_iterations:
+            context["steps"] += 1
+            # The step number, counted over the whole task (across /confirm, /reject and /edit)
+            i = context["steps"] - 1
             print(f"\n=== Iteration {i + 1} ===")
 
             # Ask the LLM
@@ -901,10 +793,12 @@ steps:
                     "action": action,
                     "tool_name": tool_name,
                     "tool_args": tool_args,
-                    # Keep the task and history so /confirm continues from here instead of starting over
+                    # Keep the task, history and step count so /confirm continues from here
+                    # instead of starting over
                     "task": context.get("task", ""),
                     "history": context["history"],
                     "memory": context.get("memory"),
+                    "steps": context["steps"],
                 }
                 self._show_pending_action()
                 return "awaiting_confirmation"
