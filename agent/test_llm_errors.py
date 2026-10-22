@@ -86,6 +86,34 @@ def test_unparseable_reply_is_still_retried(monkeypatch):
     assert len(sent) == 2
 
 
+def not_json(text):
+    def fail():
+        raise ValueError("Expecting value: line 1 column 1 (char 0)")
+    return types.SimpleNamespace(status_code=200, text=text, json=fail)
+
+
+def test_a_web_page_instead_of_the_api_stops_debug_mode(monkeypatch):
+    # Before: response.json() raised and debug mode ended with a traceback
+    sent = fake_api(monkeypatch, not_json("<html><body>Welcome</body></html>"))
+    result = DebugAgent(client()).run("bug")
+    assert result.startswith("LLM error: The API at https://api.minimax.io/anthropic did not answer with JSON")
+    assert "<html>" in result
+    assert "ANTHROPIC_BASE_URL" in result
+    assert len(sent) == 1
+
+
+def test_an_error_body_with_status_200_is_not_retried(monkeypatch):
+    # Before: the body had no text block, so it was read as a reply without an action and sent again
+    body = {"type": "error", "error": {"type": "insufficient_balance", "message": "insufficient balance"}}
+    page = types.SimpleNamespace(status_code=200, json=lambda: body, text='{"type": "error", ...}')
+    sent = fake_api(monkeypatch, page)
+    agent = InteractiveAgent(client(), tool_system)
+    agent._build_initial_context = lambda task: {**debug_context(), "task": task}
+    result = agent.run("task")
+    assert result.startswith("LLM error: API error: the reply has no content")
+    assert len(sent) == 1
+
+
 def test_max_tokens_is_sent_and_configurable(monkeypatch, tmp_path):
     sent = fake_api(monkeypatch, reply("thought: done\naction:\ndone: true\nsummary: ok"))
     client().chat(debug_context())

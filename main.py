@@ -85,8 +85,19 @@ class LLMClient:
             return {"action": None, "fatal": True, "raw": response.text,
                     "error": f"API error: {response.status_code} - {response.text[:500]}"}
         
-        result = response.json()
-        
+        # A wrong ANTHROPIC_BASE_URL can answer 200 with a web page, and some Anthropic-compatible
+        # gateways report errors (no balance, unknown model) with status 200. Before, a page crashed
+        # debug mode with a traceback, and an error body was read as an empty reply and sent again
+        try:
+            result = response.json()
+        except ValueError:
+            return {"action": None, "fatal": True, "raw": response.text,
+                    "error": (f"The API at {self.base_url} did not answer with JSON: {response.text[:200]!r}. "
+                              "Check ANTHROPIC_BASE_URL (it is the part before /v1/messages).")}
+        if not isinstance(result, dict) or not isinstance(result.get("content"), list):
+            return {"action": None, "fatal": True, "raw": response.text,
+                    "error": f"API error: the reply has no content - {response.text[:500]}"}
+
         # Go through all content blocks
         json_content = ""
         thinking_content = ""
