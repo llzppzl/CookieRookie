@@ -11,14 +11,14 @@ CookieRookie lets a language model read your files, change them and run commands
 | `exec` | Run any shell command (`shell=True`, 30 s timeout by default) | Yes |
 | `git_status`, `git_diff`, `git_log`, `git_branch` | Show the project's git state | No |
 | `git_commit`, `git_checkout` | Commit, switch branches | Yes (interactive mode) |
-| `test_run` | Run the project's tests (pytest, unittest, jest or go test) | **No** |
+| `test_run` | Run the project's tests (pytest, unittest, jest or go test) | Yes (interactive mode) |
 | `test_generate` | Read a source file and create the tests folder | No |
 
 Things to know:
 
 - **Interactive mode** (`python main.py --interactive`) pauses before every tool marked "Yes" and waits for `/confirm`, `/reject` or `/edit`. Read the arguments before you confirm: a confirmed `exec` runs exactly that command.
 - **Debug mode** (`python main.py "bug"`) shows each edit and command and asks before running it. `--yes` turns the questions off: use it only on code you can restore (a clean git checkout) or in a container.
-- **Running tests runs code.** `test_run` doesn't ask, and tests execute whatever the project's test files contain. Don't point CookieRookie at code you don't trust.
+- **Running tests runs code.** Tests execute whatever the project's test files, `conftest.py` or `package.json` contain, so `test_run` shows the exact test command and waits for `/confirm` like `exec`. Confirming it still runs that code: don't point CookieRookie at code you don't trust.
 - `edit_file` and `write_file` refuse paths outside the folder CookieRookie was started in. Reading is not limited: the model can read any file your user account can access, and what it reads is sent to the API (below). `exec` runs with your user's rights, so a command can still touch anything; that's why it asks.
 
 ## What leaves your machine

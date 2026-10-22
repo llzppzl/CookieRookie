@@ -111,7 +111,7 @@ Model names change often. These were checked against each provider's docs on 202
 4. You confirm or modify
 5. Agent executes step by step
    - Safe steps run automatically
-   - Dangerous steps (edit, exec) pause for confirmation
+   - Dangerous steps (edit, exec, test_run) pause for confirmation
 ```
 
 ### Available Tools
@@ -184,7 +184,7 @@ Plan: Refactor login() and cover it with tests
 1. [read_file] Read src/auth.py
 2. [write_file] Create tests/test_auth.py  (asks you first)
 3. [edit_file] Refactor login()  (asks you first)
-4. [test_run] Run the tests
+4. [test_run] Run the tests  (asks you first)
 
 /confirm to run it | /skip N to leave out step N | /reject [what to change]
 

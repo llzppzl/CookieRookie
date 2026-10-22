@@ -41,3 +41,32 @@ def test_long_files_are_cut_in_the_preview(tmp_path, capsys):
 def test_exec_shows_the_command(capsys):
     out = show(capsys, "exec", {"command": "pytest -x", "workdir": "src"})
     assert "Run command (workdir=src):\n  pytest -x" in out
+
+
+def test_test_run_shows_the_test_command(tmp_path, capsys):
+    (tmp_path / "test_calc.py").write_text("def test_one():\n    assert True\n")
+    out = show(capsys, "test_run", {"path": str(tmp_path), "pattern": "test_*.py", "framework": "pytest"})
+    assert f"Run the tests (pytest) in {tmp_path}:" in out
+    assert "-m pytest -v test_calc.py" in out
+
+
+def test_test_run_preview_says_when_it_cannot_run(tmp_path, capsys):
+    out = show(capsys, "test_run", {"path": str(tmp_path / "missing")})
+    assert "this will fail: Directory not found" in out
+
+
+def test_test_run_waits_for_confirm_and_runs_nothing_before(tmp_path, monkeypatch):
+    """Before, test_run ran the project's tests (its code) as soon as the model asked for it"""
+    from agent import tools, test_tools
+    from agent.tool_system import tool_system
+
+    tools.register_base_tools()
+    calls = []
+    monkeypatch.setattr(test_tools.subprocess, "run", lambda *a, **k: calls.append(a))
+    llm = MagicMock()
+    llm.chat.return_value = {"thought": "run them", "action": {"tool": "test_run", "args": {"path": str(tmp_path)}},
+                             "done": False, "raw": ""}
+    agent = InteractiveAgent(llm, tool_system)
+    assert agent.run("run the tests") == "awaiting_confirmation"
+    assert agent.pending_action["tool_name"] == "test_run"
+    assert calls == []

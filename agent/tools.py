@@ -339,7 +339,9 @@ def register_base_tools() -> None:
 
     # Test tools
     tt = _get_test_tools()
-    tool_system.register("test_run", tt.test_run, confirmable=False,
+    # Running the tests runs the project's code (test files, conftest.py, package.json scripts),
+    # so like exec it waits for the user
+    tool_system.register("test_run", tt.test_run, confirmable=True,
                         description="Run tests (path=project directory, pattern=test file, directory or glob; default: every test the framework finds, framework=auto/pytest/unittest/jest/go)")
     tool_system.register("test_generate", tt.test_generate, confirmable=False,
                         description="Read a source file to prepare writing tests for it")

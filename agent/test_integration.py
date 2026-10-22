@@ -32,6 +32,9 @@ class TestIntegration:
         assert tool_system.is_confirmable("exec") is True
         assert tool_system.is_confirmable("search_files") is False
         assert tool_system.is_confirmable("find_files") is False
+        # Tests run the project's code, so they wait for the user like exec
+        assert tool_system.is_confirmable("test_run") is True
+        assert tool_system.is_confirmable("test_generate") is False
 
     def test_interactive_agent_with_mock_llm(self):
         """InteractiveAgent with a mock LLM, using a tool with confirmable=True"""

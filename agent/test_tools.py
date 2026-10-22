@@ -128,36 +128,17 @@ def _test_targets(path: str, pattern: Optional[str]) -> List[str]:
     return [os.path.relpath(match, path) for match in matches]
 
 
-def _test_run(path: str = None, pattern: str = None, framework: str = "auto") -> dict:
-    """执行测试 (内部实现)
-
-    Args:
-        path: Project directory (default: the current directory)
-        pattern: Test file, directory or glob to run. Default: every test the framework finds
-        framework: 测试框架 (auto/pytest/unittest/jest/go)
-
-    Returns:
-        success: whether it passed
-        returncode: exit code
-        framework: the detected framework
-        stdout: standard output
-        stderr: standard error
-        passed: number passed
-        failed: number failed
-        errors: number of errors
-    """
-    if path is None:
-        path = "."
-
+def _test_command(path: str, pattern: Optional[str], framework: str):
+    """The command test_run would run, as (cmd, framework, error): cmd is None when error says
+    why nothing can run."""
     if not os.path.isdir(path):
-        return {"success": False, "error": f"Directory not found: {path}", "framework": framework}
+        return None, framework, f"Directory not found: {path}"
 
     # The pattern goes on the command line, so it must not be read as an option (-p loads a plugin)
     if pattern and pattern.startswith("-"):
-        return {"success": False, "error": f"pattern must be a file, directory or glob, not an option: {pattern}",
-                "framework": framework}
+        return None, framework, f"pattern must be a file, directory or glob, not an option: {pattern}"
 
-    # 自动检测框架
+    # Detect the framework
     if framework == "auto":
         framework = _detect_framework(path)
 
@@ -167,7 +148,7 @@ def _test_run(path: str = None, pattern: str = None, framework: str = "auto") ->
     if framework in ("pytest", "unittest"):
         targets = _test_targets(path, pattern)
         if pattern and not targets:
-            return {"success": False, "error": f"No files match {pattern} in {path}", "framework": framework}
+            return None, framework, f"No files match {pattern} in {path}"
 
     if framework == "pytest":
         cmd = [_python(path), "-m", "pytest", "-v"] + targets
@@ -182,11 +163,46 @@ def _test_run(path: str = None, pattern: str = None, framework: str = "auto") ->
     elif framework == "go":
         cmd = ["go", "test", "-v", pattern or "./..."]
     else:
-        return {
-            "success": False,
-            "error": f"Unknown framework: {framework}",
-            "framework": framework
-        }
+        return None, framework, f"Unknown framework: {framework}"
+    return cmd, framework, ""
+
+
+def describe_test_run(path: str = None, pattern: str = None, framework: str = "auto") -> str:
+    """What test_run(path, pattern, framework) will run, for the user to see before they allow it"""
+    path = "." if path is None else path
+    try:
+        cmd, framework, error = _test_command(path, pattern, framework)
+    except Exception as e:  # an argument of the wrong type; test_run itself will report it
+        cmd, error = None, f"{type(e).__name__}: {e}"
+    if cmd is None:
+        return f"Run the tests in {path} (this will fail: {error})"
+    return f"Run the tests ({framework}) in {path}:\n  {' '.join(cmd)}"
+
+
+def _test_run(path: str = None, pattern: str = None, framework: str = "auto") -> dict:
+    """Run the tests (internal implementation)
+
+    Args:
+        path: Project directory (default: the current directory)
+        pattern: Test file, directory or glob to run. Default: every test the framework finds
+        framework: test framework (auto/pytest/unittest/jest/go)
+
+    Returns:
+        success: whether it passed
+        returncode: exit code
+        framework: the detected framework
+        stdout: standard output
+        stderr: standard error
+        passed: number passed
+        failed: number failed
+        errors: number of errors
+    """
+    if path is None:
+        path = "."
+
+    cmd, framework, error = _test_command(path, pattern, framework)
+    if cmd is None:
+        return {"success": False, "error": error, "framework": framework}
 
     try:
         result = subprocess.run(
