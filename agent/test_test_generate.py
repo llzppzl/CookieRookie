@@ -30,7 +30,34 @@ def test_no_tests_folder_inside_src(tmp_path, monkeypatch):
     make("src/calculator.py")
     generate_tests("src/calculator.py")
     assert not (tmp_path / "src" / "tests").exists()
-    assert (tmp_path / "tests").is_dir()
+
+
+def test_generate_changes_nothing_on_disk(tmp_path, monkeypatch):
+    """It runs without asking, so it only reads. write_file creates the folder later."""
+    monkeypatch.chdir(tmp_path)
+    make("src/calculator.py")
+    before = sorted(str(p) for p in tmp_path.rglob("*"))
+    generate_tests("src/calculator.py")
+    assert sorted(str(p) for p in tmp_path.rglob("*")) == before
+
+
+def test_a_source_outside_the_project_gets_tests_inside_it(tmp_path, monkeypatch):
+    project, outside = tmp_path / "project", tmp_path / "outside"
+    project.mkdir()
+    make(str(outside / "secret.py"))
+    monkeypatch.chdir(project)
+    result = generate_tests(os.path.join("..", "outside", "secret.py"))
+    assert result["target"] == os.path.join("tests", "test_secret.py")
+    assert not (outside / "tests").exists()
+
+
+def test_write_file_creates_the_tests_folder(tmp_path, monkeypatch):
+    from agent.tools import write_file
+    monkeypatch.chdir(tmp_path)
+    make("src/calculator.py")
+    target = generate_tests("src/calculator.py")["target"]
+    assert write_file(target, "def test_x():\n    pass\n")["success"] is True
+    assert (tmp_path / "tests" / "test_calculator.py").is_file()
 
 
 def test_an_explicit_target_is_kept(tmp_path, monkeypatch):

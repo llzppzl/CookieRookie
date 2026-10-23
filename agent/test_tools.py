@@ -250,12 +250,14 @@ def _default_test_target(source: str) -> str:
         app/models.py          -> tests/app/test_models.py
         calculator.py          -> tests/test_calculator.py
 
-    A file outside the current directory gets a tests/ folder next to it.
+    The tests for a file outside the current directory go to tests/ at the project root too:
+    write_file refuses paths outside the project, so a tests/ folder next to that file could not
+    be written anyway.
     """
     name = os.path.splitext(os.path.basename(source))[0]
     rel = os.path.relpath(source)
     if rel.startswith(os.pardir):  # outside the project
-        return os.path.join(os.path.dirname(source), "tests", f"test_{name}.py")
+        return os.path.join("tests", f"test_{name}.py")
 
     folders = list(os.path.normpath(os.path.dirname(rel)).split(os.sep))
     folders = [f for f in folders if f not in ("", os.curdir)]
@@ -310,9 +312,9 @@ def _test_generate(source: str, target: str = None, framework: str = "pytest") -
         # relative path like "src" never has, and "tests" was then added inside the source folder,
         # so src/calculator.py got src/tests/test_calculator.py
         target = _default_test_target(source)
-        # Create the tests folder so it's there before the tests are written
-        if os.path.dirname(target):
-            os.makedirs(os.path.dirname(target), exist_ok=True)
+        # The tests folder is not created here: test_generate runs without asking, and it used to
+        # create folders anywhere, even outside the project. write_file creates it when the tests
+        # are written, after the user approves, and only inside the project.
 
     suggested_imports = _extract_imports(source_content)
 

@@ -12,7 +12,7 @@ CookieRookie lets a language model read your files, change them and run commands
 | `git_status`, `git_diff`, `git_log`, `git_branch` | Show the project's git state | No |
 | `git_commit`, `git_checkout` | Commit, switch branches | Yes (interactive mode) |
 | `test_run` | Run the project's tests (pytest, unittest, jest or go test) | Yes (interactive mode) |
-| `test_generate` | Read a source file and create the tests folder | No |
+| `test_generate` | Read a source file and suggest where its tests go (changes nothing) | No |
 
 Things to know:
 
