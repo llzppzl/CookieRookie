@@ -19,16 +19,17 @@ Things to know:
 - **Interactive mode** (`python main.py --interactive`) pauses before every tool marked "Yes" and waits for `/confirm`, `/reject` or `/edit`. Read the arguments before you confirm: a confirmed `exec` runs exactly that command.
 - **Debug mode** (`python main.py "bug"`) shows each edit and command and asks before running it. `--yes` turns the questions off: use it only on code you can restore (a clean git checkout) or in a container.
 - **Running tests runs code.** Tests execute whatever the project's test files, `conftest.py` or `package.json` contain, so `test_run` shows the exact test command and waits for `/confirm` like `exec`. Confirming it still runs that code: don't point CookieRookie at code you don't trust.
+- Interactive mode writes `.agent-memory.json` (the project's layout and commands) into the folder it was started in, without asking.
 - `edit_file` and `write_file` refuse paths outside the folder CookieRookie was started in. Reading is not limited: the model can read any file your user account can access, and what it reads is sent to the API (below). `exec` runs with your user's rights, so a command can still touch anything; that's why it asks.
 
 ## What leaves your machine
 
-- Every request sends the task, the tool results (file contents, command output, test output) and the history to the API at `ANTHROPIC_BASE_URL` (MiniMax by default). Don't use CookieRookie on files you may not share with that provider.
+- Every request sends the task, the list of tools, the tool results (file contents, command output, test output) and the history to the API at `ANTHROPIC_BASE_URL` (MiniMax by default). Don't use CookieRookie on files you may not share with that provider.
 - Nothing else is sent anywhere.
 
 ## Your API key
 
-- The key is read from `.env` in the CookieRookie folder, which is in `.gitignore`. Never commit it.
+- The key is read from the `ANTHROPIC_API_KEY` environment variable, or else from `.env` in the CookieRookie folder, which is in `.gitignore`. Never commit it.
 - It is sent only to `ANTHROPIC_BASE_URL`, in the `x-api-key` header.
 
 ## Safer setups

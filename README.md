@@ -94,7 +94,7 @@ CookieRookie offers its tools through the API's tool use, so the model's tool ca
 |---------|-------------|
 | `help` | Show help information |
 | `/confirm` | Confirm and execute pending action |
-| `/reject` | Reject and ask agent to replan |
+| `/reject [why]` | Don't run the pending action. With a reason, the agent goes on with the task and tries something else; without one, the task stops |
 | `/edit key=value` | Change some arguments of the pending action, then run it (e.g. `/edit line=19`, `/edit command="pytest -x"`) |
 | `/status` | Show pending action status |
 | `/plan <task>` | Ask for a step-by-step plan first; nothing runs yet |
@@ -133,9 +133,11 @@ The git tools work on the project in the directory you start CookieRookie in. `g
 CookieRookie/
 ├── agent/
 │   ├── __init__.py
+│   ├── cli.py               # The installed `cookierookie` command (runs main.py)
 │   ├── core.py              # Agent logic (DebugAgent, InteractiveAgent)
 │   ├── tools.py             # Base file tools
-│   ├── tool_system.py       # Plugin-based tool registry
+│   ├── tool_system.py       # Plugin-based tool registry and the API tool definitions
+│   ├── history.py           # Shortens old steps so long tasks fit the context window
 │   ├── memory.py            # Project memory
 │   ├── explorer.py          # Auto-detect project structure
 │   ├── git_tools.py         # Git operations
@@ -144,11 +146,14 @@ CookieRookie/
 ├── docs/superpowers/
 │   ├── specs/               # Design specifications
 │   └── plans/               # Implementation plans
-├── test/                    # Small buggy files to try debug mode on
+├── examples/debug-demo/     # A small buggy app to try debug mode on
 ├── main.py                  # Entry point and LLM client
+├── pyproject.toml           # Packaging for pip install
 ├── requirements.txt
 └── .env.example
 ```
+
+In interactive mode CookieRookie keeps what it learns about a project (its layout and commands) in `.agent-memory.json` in that project's folder. Delete the file to make it start over, and add it to the project's `.gitignore` if you don't want to commit it.
 
 ## Usage Examples
 
@@ -157,7 +162,7 @@ CookieRookie/
 ```bash
 python main.py --interactive
 > Write a user management module
-# Agent plans and asks for confirmation
+# Agent shows the file it wants to write and waits
 > /confirm
 ```
 
