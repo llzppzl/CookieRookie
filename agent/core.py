@@ -538,41 +538,8 @@ steps:
         """Turn values typed in /edit, which are always text, into the types the tool takes
         (line=19 becomes 19, use_regex=true becomes True). Raises ValueError for an argument the
         tool doesn't have or a value of the wrong type."""
-        import inspect
-        import typing
-
-        try:
-            params = inspect.signature(fn).parameters
-        except (TypeError, ValueError):
-            return dict(args)
-        takes_any = any(p.kind == p.VAR_KEYWORD for p in params.values())
-        coerced = {}
-        for key, value in args.items():
-            param = params.get(key)
-            if param is None:
-                if not takes_any:
-                    raise ValueError(f"{key!r} is not an argument of this tool. It takes: {', '.join(params)}")
-                coerced[key] = value
-                continue
-            # The type from the annotation (Optional[int] counts as int), else from the default
-            expected = param.annotation
-            if typing.get_origin(expected) is typing.Union:
-                options = [a for a in typing.get_args(expected) if a is not type(None)]
-                expected = options[0] if len(options) == 1 else None
-            if expected not in (int, float, bool):
-                expected = type(param.default) if type(param.default) in (int, float, bool) else None
-            if not isinstance(value, str) or expected is None:
-                coerced[key] = value
-            elif expected is bool:
-                if value.lower() not in ("true", "false"):
-                    raise ValueError(f"{key} must be true or false, not {value!r}")
-                coerced[key] = value.lower() == "true"
-            else:
-                try:
-                    coerced[key] = expected(value)
-                except ValueError:
-                    raise ValueError(f"{key} must be a number, not {value!r}") from None
-        return coerced
+        from .tool_system import coerce_args
+        return coerce_args(fn, args)
 
     def edit_and_confirm(self, modified_args: dict) -> str:
         """Change some arguments of the pending action, then run it. Arguments not given keep

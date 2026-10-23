@@ -38,9 +38,49 @@ def schema_from_signature(fn: Callable) -> Dict[str, Any]:
     return {"type": "object", "properties": properties, "required": required}
 
 
+def coerce_args(fn: Callable, args: dict) -> dict:
+    """Turn text values into the types the tool takes (line="19" becomes 19, use_regex="false"
+    becomes False). Values from the text reply format and from /edit are often text, and then
+    exec(timeout="60") crashed and use_regex="false" or create="false" counted as true. Raises
+    ValueError for an argument the tool doesn't have or a value of the wrong type."""
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return dict(args)
+    takes_any = any(p.kind == p.VAR_KEYWORD for p in params.values())
+    coerced = {}
+    for key, value in args.items():
+        param = params.get(key)
+        if param is None:
+            if not takes_any:
+                raise ValueError(f"{key!r} is not an argument of this tool. It takes: {', '.join(params)}")
+            coerced[key] = value
+            continue
+        # The type from the annotation (Optional[int] counts as int), else from the default
+        expected = param.annotation
+        if typing.get_origin(expected) is typing.Union:
+            options = [a for a in typing.get_args(expected) if a is not type(None)]
+            expected = options[0] if len(options) == 1 else None
+        if expected not in (int, float, bool):
+            expected = type(param.default) if type(param.default) in (int, float, bool) else None
+        if not isinstance(value, str) or expected is None:
+            coerced[key] = value
+        elif expected is bool:
+            if value.strip().lower() not in ("true", "false"):
+                raise ValueError(f"{key} must be true or false, not {value!r}")
+            coerced[key] = value.strip().lower() == "true"
+        else:
+            try:
+                coerced[key] = expected(value.strip())
+            except ValueError:
+                raise ValueError(f"{key} must be a number, not {value!r}") from None
+    return coerced
+
+
 def checked(name: str, fn: Callable) -> Callable:
-    """Wrap fn so that arguments it does not take come back as an error result the model can
-    read and correct, instead of a TypeError that ends the whole task."""
+    """Wrap fn so that arguments it does not take, or values of the wrong type, come back as an
+    error result the model can read and correct, instead of a TypeError that ends the whole task.
+    Numbers and true/false written as text are turned into numbers and booleans first."""
     try:
         sig = inspect.signature(fn)
     except (TypeError, ValueError):
@@ -57,9 +97,10 @@ def checked(name: str, fn: Callable) -> Callable:
             if unknown:
                 raise TypeError("unknown argument " + ", ".join(repr(k) for k in unknown))
             sig.bind(*args, **kwargs)
-        except TypeError as e:
+            kwargs = coerce_args(fn, kwargs)
+        except (TypeError, ValueError) as e:
             return {"success": False,
-                    "error": f"TypeError: wrong arguments for {name}: {e}. Its arguments are: {arg_names}."}
+                    "error": f"{type(e).__name__}: wrong arguments for {name}: {e}. Its arguments are: {arg_names}."}
         return fn(*args, **kwargs)
 
     return call
