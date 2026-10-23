@@ -173,8 +173,8 @@ def _kill_process_tree(proc: subprocess.Popen) -> None:
 
 
 def exec(command: str, workdir: str = None, timeout: int = 30) -> dict:
-    """执行 shell 命令
-    
+    """Run a shell command
+
     Args:
         command: the command to run
         workdir: working directory
@@ -273,7 +273,7 @@ def search_files(pattern: str, path: str = ".", file_glob: str = "*.py", use_reg
 
 @inside_project_only
 def write_file(path: str, content: str) -> dict:
-    """写入文件内容
+    """Write content to a file (created if missing, replaced if it exists)
 
     Args:
         path: file path
@@ -330,12 +330,23 @@ def find_files(pattern: str, path: str = ".", use_regex: bool = False) -> dict:
 
 def register_base_tools() -> None:
     """Register the base tools in ToolSystem"""
-    tool_system.register("read_file", read_file, confirmable=False)
-    tool_system.register("edit_file", edit_file, confirmable=True)
-    tool_system.register("write_file", write_file, confirmable=True)
-    tool_system.register("exec", exec, confirmable=True)
-    tool_system.register("search_files", search_files, confirmable=False)
-    tool_system.register("find_files", find_files, confirmable=False)
+    # The descriptions go to the model with each tool (in the prompt and in the API's tool list)
+    tool_system.register("read_file", read_file, confirmable=False,
+                        description="Read lines of a file (offset: first line, from 1; limit: how many lines)")
+    tool_system.register("edit_file", edit_file, confirmable=True,
+                        description="Change a file: replace line number line with new_string (preferred), "
+                                    "or replace old_string, which must appear exactly once, with new_string")
+    tool_system.register("write_file", write_file, confirmable=True,
+                        description="Create a file, or replace everything in it, with content")
+    tool_system.register("exec", exec, confirmable=True,
+                        description="Run a shell command (in workdir, default: the project folder); "
+                                    "it is stopped after timeout seconds")
+    tool_system.register("search_files", search_files, confirmable=False,
+                        description="Search the contents of files matching file_glob under path for pattern "
+                                    "(plain text, or a regex with use_regex=True)")
+    tool_system.register("find_files", find_files, confirmable=False,
+                        description="Find files under path whose name matches pattern "
+                                    "(a glob like *.py, or a regex with use_regex=True)")
 
     # Test tools
     tt = _get_test_tools()

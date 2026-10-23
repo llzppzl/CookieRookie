@@ -4,8 +4,38 @@ ToolSystem - plugin-style tool registry
 
 import functools
 import inspect
-from typing import Dict, Callable, Any, Optional
+import typing
+from typing import Dict, Callable, Any, List, Optional
 from dataclasses import dataclass
+
+
+JSON_TYPES = {str: "string", int: "integer", float: "number", bool: "boolean", list: "array", dict: "object"}
+
+
+def schema_from_signature(fn: Callable) -> Dict[str, Any]:
+    """A JSON Schema for a tool's arguments, built from its signature (for the API's tool use).
+    Arguments without a default are required."""
+    properties, required = {}, []
+    try:
+        params = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return {"type": "object", "properties": {}}
+    for param in params:
+        if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+            continue
+        annotation = param.annotation
+        if typing.get_origin(annotation) is typing.Union:  # Optional[str]
+            options = [a for a in typing.get_args(annotation) if a is not type(None)]
+            annotation = options[0] if len(options) == 1 else None
+        item_types = typing.get_args(annotation)
+        annotation = typing.get_origin(annotation) or annotation  # List[str] -> list
+        prop = {"type": JSON_TYPES.get(annotation, "string")}
+        if prop["type"] == "array":
+            prop["items"] = {"type": JSON_TYPES.get(item_types[0], "string") if item_types else "string"}
+        properties[param.name] = prop
+        if param.default is param.empty:
+            required.append(param.name)
+    return {"type": "object", "properties": properties, "required": required}
 
 
 def checked(name: str, fn: Callable) -> Callable:
@@ -80,6 +110,20 @@ class ToolSystem:
         """Whether the tool needs the user's confirmation"""
         tool = self._tools.get(name)
         return tool.confirmable if tool else False
+
+    def api_tools(self, names=None) -> List[Dict[str, Any]]:
+        """The tools (all, or only those in names) as tool definitions for the Messages API"""
+        specs = []
+        for tool in self._tools.values():
+            if names is not None and tool.name not in names:
+                continue
+            description = tool.description or ((inspect.getdoc(tool.fn) or tool.name).splitlines() or [tool.name])[0]
+            specs.append({
+                "name": tool.name,
+                "description": description,
+                "input_schema": tool.args_schema or schema_from_signature(tool.fn),
+            })
+        return specs
 
 
 # The shared instance

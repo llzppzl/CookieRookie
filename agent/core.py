@@ -119,9 +119,18 @@ SYSTEM_PROMPT = """You are a debugging agent. Your job is to find and fix the bu
 - search_files(pattern, path=".", file_glob="*.py"): search file contents
 - find_files(pattern, path="."): find files by name
 
-## Reply format (follow it exactly)
+## Calling a tool
+Call one tool per reply through tool use, with your reasoning (1-2 sentences) as text next to it.
+When the bug is fixed, call no tool and reply with:
 
-Reply with these lines and **nothing else**:
+```
+done: true
+summary: what you fixed
+```
+
+## Reply format without tool use
+
+If you can't use tool use, reply with these lines and **nothing else**:
 
 ```
 thought: your reasoning (1-2 sentences)
@@ -305,7 +314,9 @@ class DebugAgent:
         return {
             "bug_report": bug_report,
             "history": [],
-            "system": SYSTEM_PROMPT
+            "system": SYSTEM_PROMPT,
+            # Offered to the model through the API's tool use
+            "tools": tool_system.api_tools(list(self.tools)),
         }
 
 
@@ -362,9 +373,18 @@ When the user asks for tests:
 3. Call `write_file(path="path/to/test_file.py", content="the complete test code")` to write the tests
 4. Call `test_run()` to check that they pass
 
-## Reply format (follow it exactly)
+## Calling a tool
+Call one tool per reply through tool use, with your reasoning (1-2 sentences) as text next to it.
+When the task is finished, call no tool and reply with:
 
-Reply with these lines and **nothing else**:
+```
+done: true
+summary: what you did
+```
+
+## Reply format without tool use
+
+If you can't use tool use, reply with these lines and **nothing else**:
 
 ```
 thought: your reasoning (1-2 sentences)
@@ -424,6 +444,12 @@ steps:
             tool_lines.append(f"- {name}({_describe_args(tool_def.fn)}){confirm_mark}" + (f": {desc}" if desc else ""))
         return "\n".join(tool_lines)
 
+    def _api_tools(self) -> list:
+        """The tools for the API's tool use. A tool system without api_tools() offers none, and
+        the model uses the text reply format."""
+        api_tools = getattr(self.tool_system, "api_tools", None)
+        return api_tools() if callable(api_tools) else []
+
     def _build_system_prompt(self) -> str:
         """Build the system prompt"""
         tool_list = self._build_tool_list()
@@ -438,6 +464,7 @@ steps:
             "task": task,
             "history": [],
             "system": self._build_system_prompt(),
+            "tools": self._api_tools(),
             # Model replies used so far; max_iterations is the limit for the whole task
             "steps": 0,
         }
@@ -480,6 +507,7 @@ steps:
             "task": pending.get("task", ""),
             "history": pending.get("history", []),
             "system": self._build_system_prompt(),
+            "tools": self._api_tools(),
             "memory": pending.get("memory"),
             "steps": pending.get("steps", 0),
         }

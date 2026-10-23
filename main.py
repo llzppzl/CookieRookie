@@ -42,7 +42,10 @@ class LLMClient:
         self.model = model
         self.base_url = base_url
         self.max_tokens = max_tokens or load_config()["max_tokens"]
-    
+        # Offer the tools through the API's tool use. Turned off for the rest of the session if
+        # the API refuses a request that has them (a gateway without tool use)
+        self.use_tools = True
+
     def chat(self, context: dict) -> dict:
         """调用 LLM API (Anthropic 兼容格式)"""
         # Older steps lose their file contents and output, so long tasks still fit the context window
@@ -66,7 +69,13 @@ class LLMClient:
             "temperature": 0.7,
             "system": system_prompt
         }
-        
+        # The agents put the tools they can run in the context (planning offers none). The model
+        # can then call one as a tool_use block, whose arguments arrive as JSON: no quoting or
+        # escaping to get wrong, which broke write_file and multi-line edits in the text format
+        tools = context.get("tools") if self.use_tools else None
+        if tools:
+            data["tools"] = tools
+
         # "fatal" stops the run and shows the error instead of calling the API again and again.
         # Every API error and network failure is fatal for now, including ones a later retry
         # could fix (429 rate limits, 5xx); so is a reply cut off at max_tokens.
@@ -77,10 +86,22 @@ class LLMClient:
                 json=data,
                 timeout=REQUEST_TIMEOUT
             )
+            if tools and response.status_code in (400, 422):
+                # Some Anthropic-compatible gateways don't take "tools": ask again without them.
+                # The text format (thought:/action:/done:) still works there
+                print("Note: the API refused the request with tools, so CookieRookie uses the text reply format.")
+                self.use_tools = False
+                data.pop("tools")
+                response = requests.post(
+                    f"{self.base_url}/v1/messages",
+                    headers=headers,
+                    json=data,
+                    timeout=REQUEST_TIMEOUT
+                )
         except requests.RequestException as e:
             return {"action": None, "fatal": True, "raw": "",
                     "error": f"Could not reach {self.base_url}: {type(e).__name__}: {e}"}
-        
+
         if response.status_code != 200:
             return {"action": None, "fatal": True, "raw": response.text,
                     "error": f"API error: {response.status_code} - {response.text[:500]}"}
@@ -99,15 +120,20 @@ class LLMClient:
                     "error": f"API error: the reply has no content - {response.text[:500]}"}
 
         # Go through all content blocks
-        json_content = ""
+        texts = []
+        tool_calls = []
         thinking_content = ""
-        
-        if "content" in result:
-            for block in result["content"]:
-                if block.get("type") == "text":
-                    json_content = block.get("text", "")
-                elif block.get("type") == "thinking":
-                    thinking_content = block.get("thinking", "")
+
+        for block in result["content"]:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text":
+                texts.append(block.get("text") or "")
+            elif block.get("type") == "tool_use":
+                tool_calls.append(block)
+            elif block.get("type") == "thinking":
+                thinking_content = block.get("thinking", "")
+        json_content = "\n".join(t for t in texts if t.strip())
         
         # Print the thinking (for debugging)
         if thinking_content:
@@ -119,16 +145,41 @@ class LLMClient:
             return {"action": None, "fatal": True, "raw": json_content,
                     "error": (f"The reply was cut off at max_tokens={self.max_tokens}. "
                               "Set a larger MAX_TOKENS in .env, or ask for a smaller step.")}
-        
+
+        if tool_calls:
+            return self._tool_call_reply(json_content, tool_calls[0])
+
         # 解析响应
         parsed = self._parse_response(json_content)
         
         if parsed:
             parsed["raw"] = json_content
             return parsed
-        
+
+        # With tool use, a model that has finished often just answers in prose, without
+        # "done: true". That is its final answer, not a reply in the wrong format
+        if tools and self.use_tools and json_content.strip() and result.get("stop_reason") == "end_turn":
+            return {"thought": "", "action": {}, "done": True, "summary": json_content.strip(),
+                    "raw": json_content}
+
         return {"action": None, "error": f"Failed to parse: {json_content[:200]}", "raw": json_content}
     
+    def _tool_call_reply(self, text: str, call: dict) -> dict:
+        """A reply that called a tool through tool use. The text next to the call is the thought.
+        One tool runs per step, so a second call in the same reply is left for the next step."""
+        args = call.get("input")
+        args = args if isinstance(args, dict) else {}
+        fields = self._reply_fields(text)
+        thought = fields.get("thought", text).strip("*").strip()
+        shown = json.dumps(args, ensure_ascii=False)
+        return {
+            "thought": thought,
+            "action": {"tool": call.get("name", ""), "args": args},
+            "done": False,
+            "summary": "",
+            "raw": (text + "\n" if text else "") + f"[tool call] {call.get('name', '')}({shown})",
+        }
+
     # A "thought:", "action:", "done:" or "summary:" line, also the ways models dress it up:
     # "Thought:", "**action:**", "**Done**:", "- summary:"
     REPLY_LABEL = re.compile(r'^[\s>*_#-]*(thought|action|done|summary)[*_`\s]*:[*_\s]*(.*)$', re.IGNORECASE)

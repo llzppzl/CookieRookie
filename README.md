@@ -86,6 +86,8 @@ If the API returns an error (wrong key, no quota), answers with something that i
 
 Model names change often. These were checked against each provider's docs on 2026-10-20; use the names your provider lists today.
 
+CookieRookie offers its tools through the API's tool use, so the model's tool calls arrive as JSON and file contents keep their quotes and line breaks. If an endpoint refuses requests with tools, CookieRookie prints a note and goes on with a plain-text reply format (`thought:` / `action:` / `done:`) for the rest of the session.
+
 ## Interactive Commands
 
 | Command | Description |
@@ -216,6 +218,8 @@ tool_system.register(
     description="Description for LLM"
 )
 ```
+
+The model gets the description and a JSON schema of the arguments, built from the function's signature: give the arguments type hints (`str`, `int`, `bool`, `List[str]`) and defaults for the optional ones.
 
 ### Changing System Prompt
 
