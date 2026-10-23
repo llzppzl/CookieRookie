@@ -129,45 +129,59 @@ class LLMClient:
         
         return {"action": None, "error": f"Failed to parse: {json_content[:200]}", "raw": json_content}
     
+    # A "thought:", "action:", "done:" or "summary:" line, also the ways models dress it up:
+    # "Thought:", "**action:**", "**Done**:", "- summary:"
+    REPLY_LABEL = re.compile(r'^[\s>*_#-]*(thought|action|done|summary)[*_`\s]*:[*_\s]*(.*)$', re.IGNORECASE)
+
+    @classmethod
+    def _reply_fields(cls, content: str) -> dict:
+        """The text after each label line, up to the next label line. Before, the labels had to be
+        lower case and at the very start of a line, so "Thought:" or "**action:**" gave no action,
+        and "action:" inside the thought was taken as the action. Inside the action only "done:"
+        ends it, so a file written with write_file may contain lines like "summary: ..."."""
+        fields, current = {}, None
+        for line in content.splitlines():
+            match = cls.REPLY_LABEL.match(line)
+            label = match.group(1).lower() if match else None
+            if label and label not in fields and (current != "action" or label == "done"):
+                current = label
+                fields[current] = [match.group(2)]
+            elif current:
+                fields[current].append(line)
+        values = {}
+        for label, lines in fields.items():
+            # A reply wrapped in a ``` block leaves the closing fence on the last field
+            while lines and lines[-1].strip().startswith("```"):
+                lines.pop()
+            values[label] = "\n".join(lines).strip()
+        return values
+
     def _parse_response(self, content: str) -> dict:
         """Parse the LLM reply - accepts several formats"""
-        content = content.strip()
-        
+        fields = self._reply_fields(content.strip())
+
         result = {
-            "thought": "",
+            "thought": fields.get("thought", "").strip("*").strip(),
             "action": {},
             "done": False,
-            "summary": ""
+            "summary": fields.get("summary", "")
         }
-        
-        # Extract thought
-        thought_match = re.search(r'thought:\s*(.+?)(?=\naction:|$)', content, re.DOTALL)
-        if thought_match:
-            result["thought"] = thought_match.group(1).strip()
-        
-        # Extract action
-        action_match = re.search(r'action:\s*(.+?)(?=\ndone:|$)', content, re.DOTALL)
-        if action_match:
-            action_str = action_match.group(1).strip()
-            if action_str:
-                parsed = self._parse_action(action_str)
-                if parsed:
-                    tool_name, args = parsed
-                    result["action"] = {"tool": tool_name, "args": args}
-        
-        # Extract done
-        done_match = re.search(r'done:\s*(true|false)', content, re.IGNORECASE)
+
+        # action: `read_file(path="a.py")` - the backticks are not part of the call
+        action_str = fields.get("action", "").strip("`").strip()
+        if action_str:
+            parsed = self._parse_action(action_str)
+            if parsed:
+                tool_name, args = parsed
+                result["action"] = {"tool": tool_name, "args": args}
+
+        done_match = re.match(r'\W*(true|false)', fields.get("done", ""), re.IGNORECASE)
         if done_match:
             result["done"] = done_match.group(1).lower() == "true"
-        
-        # Extract summary
-        summary_match = re.search(r'summary:\s*(.+?)$', content, re.DOTALL)
-        if summary_match:
-            result["summary"] = summary_match.group(1).strip()
-        
+
         if not result["thought"] and not result["action"]:
             return None
-        
+
         return result
     
     def _parse_action(self, action_str: str):
