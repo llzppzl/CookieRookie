@@ -317,7 +317,10 @@ class LLMClient:
                         if k == "new_string" and len(str(v)) > 50:
                             args_parts.append(f'{k}="[cut off]"')
                         else:
-                            args_parts.append(f'{k}="{v}"' if isinstance(v, str) else f'{k}={v}')
+                            # Quoted and escaped, so the line is a call the reply format accepts.
+                            # Before, f'{k}="{v}"' wrote new_string="print("hi")" and real line
+                            # breaks, and models copied that broken quoting into their next action
+                            args_parts.append(f'{k}={json.dumps(v, ensure_ascii=False)}' if isinstance(v, str) else f'{k}={v}')
                     args_str = ", ".join(args_parts)
                     parts.append(f" Action: {tool_name}({args_str})")
                 
