@@ -487,7 +487,7 @@ steps:
         print(f"Executing confirmed action: {self.pending_action['tool_name']}({tool_args})")
         tools = self.tool_system.list_tools()
         tool_def = tools[self.pending_action["tool_name"]]
-        result = tool_def.fn(**tool_args)
+        result = run_tool(tool_def.fn, tool_args)
 
         result_summary = json.dumps(result, ensure_ascii=False)
         if len(result_summary) > 300:
@@ -561,7 +561,7 @@ steps:
         action["args"] = modified_args
 
         print(f"Executing modified action: {self.pending_action['tool_name']}({modified_args})")
-        result = tool_def.fn(**modified_args)
+        result = run_tool(tool_def.fn, modified_args)
 
         result_summary = json.dumps(result, ensure_ascii=False)
         if len(result_summary) > 300:
@@ -799,7 +799,9 @@ steps:
                 return "awaiting_confirmation"
 
             print(f"Executing: {tool_name}({tool_args})")
-            result = tool_def.fn(**tool_args)
+            # A tool that raises (test_generate(framework=None)) used to end the task with a bare
+            # "Error: ..." in the terminal; now the model reads the error and can fix its call
+            result = run_tool(tool_def.fn, tool_args)
 
             result_summary = json.dumps(result, ensure_ascii=False)
             if len(result_summary) > 300:
