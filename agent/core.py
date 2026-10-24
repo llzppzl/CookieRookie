@@ -293,7 +293,7 @@ class DebugAgent:
                 print(f"Executing: {tool_name}({tool_args})")
                 result = run_tool(self.tools[tool_name], tool_args)
 
-            # 打印结果摘要
+            # Print a short view of the result
             result_summary = json.dumps(result, ensure_ascii=False)
             if len(result_summary) > 300:
                 result_summary = result_summary[:300] + "..."
@@ -321,7 +321,7 @@ class DebugAgent:
 
 
 def create_agent(llm_client, max_iterations: int = 50, ask=None) -> DebugAgent:
-    """创建 Debug Agent"""
+    """Create a DebugAgent"""
     return DebugAgent(llm_client, max_iterations, ask)
 
 
@@ -352,7 +352,7 @@ def _describe_args(fn) -> str:
 
 
 class InteractiveAgent:
-    """Interactive Agent - 支持用户确认的 Agent"""
+    """Interactive Agent - an agent that waits for the user to approve edits and commands"""
 
     SYSTEM_PROMPT = """You are an interactive coding agent. Your job is to complete the user's coding request by calling tools.
 
@@ -422,7 +422,7 @@ steps:
         # The plan from plan(), until it is run (execute_plan) or dropped
         self.current_plan = None
 
-        # 初始化记忆
+        # Set up the project memory
         if project_path:
             from .memory import ProjectMemory
             from .explorer import auto_detect_structure

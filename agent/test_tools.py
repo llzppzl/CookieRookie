@@ -383,13 +383,13 @@ def _extract_imports(source_content: str) -> list:
 
 # Public API - wrapper functions for external use
 def test_run(path: str = None, pattern: str = None, framework: str = "auto") -> dict:
-    """执行测试
+    """Run the tests
 
     Args:
         path: Project directory (default: the current directory)
         pattern: Test file, directory or glob to run, e.g. tests/test_calc.py.
             Default: every test the framework finds
-        framework: 测试框架 (auto/pytest/unittest/jest/go)
+        framework: test framework (auto/pytest/unittest/jest/go)
 
     Returns:
         success: whether it passed

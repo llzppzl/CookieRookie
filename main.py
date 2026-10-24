@@ -13,7 +13,7 @@ import requests
 
 from agent.history import compact_history
 
-# 添加当前目录到路径
+# Add this file's folder to the import path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from agent import DebugAgent
@@ -34,7 +34,7 @@ REQUEST_TIMEOUT = (10, 300)
 
 
 class LLMClient:
-    """通用 LLM 客户端 (Anthropic 兼容模式)"""
+    """LLM client for any API that speaks the Anthropic Messages format"""
     
     def __init__(self, api_key: str, model: str = "MiniMax-M3", base_url: str = "https://api.minimax.io/anthropic",
                  max_tokens: int = None):
@@ -47,7 +47,7 @@ class LLMClient:
         self.use_tools = True
 
     def chat(self, context: dict) -> dict:
-        """调用 LLM API (Anthropic 兼容格式)"""
+        """Call the LLM API (Anthropic Messages format)"""
         # Older steps lose their file contents and output, so long tasks still fit the context window
         messages = [
             {"role": "user", "content": self._build_user_message(compact_history(context))}
@@ -153,7 +153,7 @@ class LLMClient:
         if tool_calls:
             return self._tool_call_reply(json_content, tool_calls[0])
 
-        # 解析响应
+        # Read the reply in the text format
         parsed = self._parse_response(json_content)
         
         if parsed:
@@ -265,7 +265,7 @@ class LLMClient:
         return None
 
     def _parse_args(self, args_str: str) -> dict:
-        """解析工具参数 - 支持多种格式"""
+        """Read tool arguments from text Python can't parse (numbers, "double" and 'single' quoted strings)"""
         args = {}
         
         # Number arguments: key=123
@@ -464,7 +464,7 @@ class LLMClient:
                         parts.append(f"\nOutput:\n{output}")
 
                 else:
-                    # 其他工具：直接给出一个截断后的 JSON 视图，避免完全丢信息
+                    # Other tools: a shortened JSON view, so nothing is lost entirely
                     try:
                         result_json = json.dumps(result, ensure_ascii=False)
                         max_len = 800

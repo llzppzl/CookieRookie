@@ -1,4 +1,6 @@
 """What the model reads is in English and names every tool's arguments."""
+import glob
+import os
 from unittest.mock import MagicMock
 
 from agent.core import SYSTEM_PROMPT, InteractiveAgent, _describe_args
@@ -18,6 +20,18 @@ def base_tool_system() -> ToolSystem:
     ts.register("edit_file", tools.edit_file, confirmable=True)
     ts.register("exec", tools.exec, confirmable=True, description="run a shell command")
     return ts
+
+
+def test_source_code_is_english():
+    # Comments and docstrings too: they are what contributors read, and test_run's docstring
+    # was shown to the model as the tool's description
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sources = [os.path.join(root, "main.py")] + sorted(glob.glob(os.path.join(root, "agent", "*.py")))
+    with_cjk = []
+    for path in sources:
+        with open(path, encoding="utf-8") as f:
+            with_cjk += [f"{os.path.basename(path)}:{n}" for n, line in enumerate(f, 1) if has_cjk(line)]
+    assert with_cjk == []
 
 
 def test_describe_args():

@@ -50,7 +50,7 @@ def inside_project_only(tool: Callable) -> Callable:
     return guarded
 
 
-# ========== 工具实现 ==========
+# ========== Tool implementations ==========
 
 def read_file(path: str, offset: int = 1, limit: int = 100) -> dict:
     """Read a file by line numbers
@@ -97,7 +97,7 @@ def edit_file(path: str, line: int = None, new_string: str = None,
         path: file path
         line: line number (preferred)
         new_string: the new content
-        old_string: 旧内容 (备用)
+        old_string: the old content (fallback when there is no line)
     """
     if new_string is None:
         return {"success": False, "error": "new_string is missing: give the new content"}
@@ -108,7 +108,7 @@ def edit_file(path: str, line: int = None, new_string: str = None,
         edit_mode = None
 
         if line is not None:
-            # 按行号修改
+            # Replace a line by its number
             line = int(line)
             if line < 1 or line > len(lines):
                 return {"success": False, "error": f"Line {line} out of range (1-{len(lines)})"}
@@ -127,7 +127,7 @@ def edit_file(path: str, line: int = None, new_string: str = None,
                 return {"success": False,
                         "error": f"old_string appears {occurrences} times in the file; include more surrounding "
                                  "lines so it matches once, or edit by line number"}
-            # 保留原始实现，作为学习对比
+            # Original implementation, kept for comparison while learning
             # content = content.replace(old_string, new_string, 1)
             content = content.replace(old_string, new_string, 1)
             lines = content.splitlines(keepends=True)
