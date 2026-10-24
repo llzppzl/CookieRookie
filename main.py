@@ -89,15 +89,19 @@ class LLMClient:
             if tools and response.status_code in (400, 422):
                 # Some Anthropic-compatible gateways don't take "tools": ask again without them.
                 # The text format (thought:/action:/done:) still works there
-                print("Note: the API refused the request with tools, so CookieRookie uses the text reply format.")
-                self.use_tools = False
                 data.pop("tools")
-                response = requests.post(
+                retry = requests.post(
                     f"{self.base_url}/v1/messages",
                     headers=headers,
                     json=data,
                     timeout=REQUEST_TIMEOUT
                 )
+                # Only a request that works without tools shows that they were the problem. A wrong
+                # MODEL_ID is a 400 either way; it used to turn tool use off for the whole session
+                if retry.status_code == 200:
+                    print("Note: the API refused the request with tools, so CookieRookie uses the text reply format.")
+                    self.use_tools = False
+                    response = retry
         except requests.RequestException as e:
             return {"action": None, "fatal": True, "raw": "",
                     "error": f"Could not reach {self.base_url}: {type(e).__name__}: {e}"}

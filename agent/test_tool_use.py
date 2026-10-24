@@ -120,6 +120,19 @@ def test_api_that_refuses_tools_is_asked_again_without_them(monkeypatch):
     assert "tools" not in sent[2]
 
 
+def test_a_400_for_another_reason_keeps_tool_use_on(monkeypatch, capsys):
+    # A wrong MODEL_ID or a too-long request is also a 400, with or without tools. That is not a
+    # gateway without tool use, so the rest of the session must still offer the tools
+    unknown_model = types.SimpleNamespace(status_code=400, text='{"error": "unknown model"}', json=lambda: {})
+    sent = fake_api(monkeypatch, unknown_model)
+    llm = client()
+    parsed = llm.chat(context(tool_system.api_tools()))
+    assert parsed["fatal"] and "unknown model" in parsed["error"]
+    assert "text reply format" not in capsys.readouterr().out
+    llm.chat(context(tool_system.api_tools()))
+    assert "tools" in sent[2]
+
+
 def test_other_errors_are_not_retried(monkeypatch):
     sent = fake_api(monkeypatch, refused(401))
     parsed = client().chat(context(tool_system.api_tools()))
