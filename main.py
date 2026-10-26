@@ -37,6 +37,9 @@ REQUEST_TIMEOUT = (10, 300)
 # this is larger than the 2000 characters a read_file step shows.
 MAX_SOURCE_CHARS = 12000
 
+# Most of a git diff shown to the model
+MAX_DIFF_CHARS = 4000
+
 # Answers that mean "try again later": rate limits (429), server errors and overload (529 is
 # Anthropic's "overloaded"). One of them used to end a long task at once
 RETRY_STATUSES = {408, 429, 500, 502, 503, 504, 529}
@@ -515,6 +518,38 @@ class LLMClient:
                                      + snippet + "\n```")
                     if result.get("framework_hint"):
                         parts.append(result["framework_hint"].rstrip())
+
+                elif tool_name == "git_diff" and success:
+                    # Before, the 800-character JSON view below showed the start of the diff with
+                    # every line break as \n, and nothing said that the rest was missing
+                    diff = (result.get("diff") or "").rstrip()
+                    if "diff" not in result:
+                        # An older step whose diff compact_history left out
+                        parts.append(" Result: diff read (not shown for older steps; call git_diff again to see it).")
+                    elif not diff:
+                        parts.append(" Result: no uncommitted changes" +
+                                     (f" in {args['path']}." if args.get("path") else ".") +
+                                     " (git diff does not show staged or untracked files.)")
+                    else:
+                        parts.append(f" Result: {len(diff.splitlines())} lines of diff.")
+                        if len(diff) > MAX_DIFF_CHARS:
+                            diff = (diff[:MAX_DIFF_CHARS] + "\n... [cut off: call git_diff with path= "
+                                    "for one file at a time]")
+                        parts.append("\n```diff\n" + diff + "\n```")
+
+                elif tool_name == "git_status" and success:
+                    files = result.get("files") or []
+                    parts.append(" Result: the working tree is clean." if not files
+                                 else f" Result: {len(files)} changed files:")
+                    parts.extend(f"  - {f}" for f in files[:50])
+                    if len(files) > 50:
+                        parts.append(f"  ... {len(files) - 50} more not shown.")
+
+                elif tool_name == "git_log" and success:
+                    commits = result.get("commits") or []
+                    parts.append(f" Result: {len(commits)} commits, newest first:")
+                    parts.extend(f"  - {c.get('hash', '')[:10]} {c.get('datetime', '')}  "
+                                 f"{c.get('subject', '')} ({c.get('author', '')})" for c in commits)
 
                 else:
                     # Other tools: a shortened JSON view, so nothing is lost entirely

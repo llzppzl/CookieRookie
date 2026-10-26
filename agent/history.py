@@ -11,7 +11,7 @@ worked, but drop the bulky parts. The model can read a file again if it needs it
 FULL_STEPS = 8
 
 # Bulky fields dropped from the results and arguments of older steps
-BULKY_RESULT_FIELDS = ("content", "stdout", "stderr", "matches", "source_content", "output")
+BULKY_RESULT_FIELDS = ("content", "stdout", "stderr", "matches", "source_content", "output", "diff")
 BULKY_ARG_FIELDS = ("content", "new_string", "old_string")
 
 # Longest error message kept for an older step
