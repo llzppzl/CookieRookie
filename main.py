@@ -346,8 +346,11 @@ class LLMClient:
                 # ===== New result summary: keep the status and the key details =====
                 success = result.get("success")
 
-                # Failures in one place (a test run that ran but had failures is shown by the test_run branch below)
-                if success is False and not (tool_name == "test_run" and "returncode" in result):
+                # Failures in one place. A command or test run that ran and exited with an error is
+                # shown by its own branch below: here it showed only stderr, so a failing
+                # `exec(command="pytest")`, which prints to stdout, reached the model as "failed - "
+                ran = tool_name in ("exec", "test_run") and "returncode" in result
+                if success is False and not ran:
                     error_msg = result.get("error", result.get("stderr", "unknown"))
                     parts.append(f" Result: failed - {error_msg}")
                     continue
