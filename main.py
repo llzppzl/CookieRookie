@@ -32,6 +32,10 @@ DEFAULT_MAX_TOKENS = 8192
 # writing up to DEFAULT_MAX_TOKENS can take minutes, so a 60-second read timeout cut long replies off.
 REQUEST_TIMEOUT = (10, 300)
 
+# Most of a source file test_generate shows the model. Tests are written for the whole file, so
+# this is larger than the 2000 characters a read_file step shows.
+MAX_SOURCE_CHARS = 12000
+
 
 class LLMClient:
     """LLM client for any API that speaks the Anthropic Messages format"""
@@ -465,6 +469,24 @@ class LLMClient:
                         parts.append(f"\nOutput (the last {max_len} characters):\n[cut off] ...{output[-max_len:]}")
                     elif output:
                         parts.append(f"\nOutput:\n{output}")
+
+                elif tool_name == "test_generate" and success:
+                    # Before, this went through the 800-character JSON view below: the model saw
+                    # the start of the source and never the test file path or the hint after it
+                    source = result.get("source") or args.get("source", "")
+                    parts.append(f" Result: read {source} to write tests for it. Write them to "
+                                 f"{result.get('target')} ({result.get('framework')}).")
+                    content = result.get("source_content")
+                    if content:
+                        snippet = "".join(f"{n:>4} | {text}" for n, text in
+                                          enumerate(content.splitlines(keepends=True), 1))
+                        if len(snippet) > MAX_SOURCE_CHARS:
+                            snippet = (snippet[:MAX_SOURCE_CHARS] + f"\n... [cut off: read the rest of "
+                                       f"{source} with read_file before writing tests for it]")
+                        parts.append("\n```code\n(line number | text; the numbers are not part of the file)\n"
+                                     + snippet + "\n```")
+                    if result.get("framework_hint"):
+                        parts.append(result["framework_hint"].rstrip())
 
                 else:
                     # Other tools: a shortened JSON view, so nothing is lost entirely
