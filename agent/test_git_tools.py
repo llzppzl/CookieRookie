@@ -94,6 +94,21 @@ def test_git_commit_takes_one_file_as_a_string(repo):
     assert git_status()["files"] == ["b.py"]
 
 
+def test_git_commit_with_files_leaves_other_staged_changes_alone(repo):
+    (repo / "a.py").write_text("a = 1\n")
+    git_commit("Add a.py")
+    (repo / "a.py").write_text("a = 2\n")
+    (repo / "notes.txt").write_text("staged by the user for a later commit\n")
+    subprocess.run(["git", "add", "notes.txt"], cwd=repo, check=True)
+
+    # Before: git add a.py, then a plain git commit, which took notes.txt too
+    assert git_commit("Change a.py", files=["a.py"])["success"] is True
+    committed = subprocess.run(["git", "show", "--name-only", "--format=", "HEAD"], cwd=repo,
+                               capture_output=True, text=True, check=True).stdout.split()
+    assert committed == ["a.py"]
+    assert git_status()["files"] == ["notes.txt"]
+
+
 def test_a_path_or_branch_is_not_read_as_an_option(repo):
     (repo / "a.py").write_text("")
     git_commit("Add a.py")

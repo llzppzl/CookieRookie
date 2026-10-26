@@ -115,8 +115,10 @@ def git_commit(message: str, files: Optional[List[str]] = None) -> Dict[str, Any
                 "error": add_result.stderr
             }
 
-        # Then git commit
-        commit_result = _git("commit", "-m", message)
+        # Then git commit. With files, only those are committed: a plain "git commit" also took
+        # whatever else the user had staged, which the /confirm preview never showed
+        commit_result = (_git("commit", "-m", message, "--", *files) if files
+                         else _git("commit", "-m", message))
 
         return {
             "success": commit_result.returncode == 0,
