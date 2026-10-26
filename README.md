@@ -72,7 +72,7 @@ ANTHROPIC_BASE_URL=https://api.minimax.io/anthropic
 MAX_TOKENS=8192
 ```
 
-If the API returns an error (wrong key, no quota), answers with something that isn't an API reply (often a wrong `ANTHROPIC_BASE_URL`), or a reply is cut off at `MAX_TOKENS`, the agent stops and shows the error instead of retrying.
+If the API is busy or briefly unreachable (a rate limit, a server error, "overloaded", a dropped connection), the agent waits and tries again up to 3 times (after 2, 8 and 20 seconds, or the wait the server asks for, up to a minute). If the API returns any other error (wrong key, unknown model), answers with something that isn't an API reply (often a wrong `ANTHROPIC_BASE_URL`), or a reply is cut off at `MAX_TOKENS`, the agent stops and shows the error instead of retrying.
 
 ### Supported Models
 

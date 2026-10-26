@@ -9,6 +9,7 @@ import sys
 import json
 import re
 import shlex
+import time
 import requests
 
 from agent.history import compact_history
@@ -35,6 +36,23 @@ REQUEST_TIMEOUT = (10, 300)
 # Most of a source file test_generate shows the model. Tests are written for the whole file, so
 # this is larger than the 2000 characters a read_file step shows.
 MAX_SOURCE_CHARS = 12000
+
+# Answers that mean "try again later": rate limits (429), server errors and overload (529 is
+# Anthropic's "overloaded"). One of them used to end a long task at once
+RETRY_STATUSES = {408, 429, 500, 502, 503, 504, 529}
+# Seconds to wait before each new try. A server's Retry-After wins, up to MAX_RETRY_WAIT
+RETRY_DELAYS = (2, 8, 20)
+MAX_RETRY_WAIT = 60
+
+
+def _retry_after(response, default: float) -> float:
+    """The wait a 429 or 503 asks for in its Retry-After header (in seconds), up to MAX_RETRY_WAIT"""
+    headers = getattr(response, "headers", None) or {}
+    try:
+        wait = float(headers.get("retry-after") or headers.get("Retry-After") or "")
+    except (TypeError, ValueError):
+        return default
+    return min(max(wait, 0), MAX_RETRY_WAIT)
 
 
 class LLMClient:
@@ -81,25 +99,15 @@ class LLMClient:
             data["tools"] = tools
 
         # "fatal" stops the run and shows the error instead of calling the API again and again.
-        # Every API error and network failure is fatal for now, including ones a later retry
-        # could fix (429 rate limits, 5xx); so is a reply cut off at max_tokens.
+        # Rate limits, server errors and dropped connections are tried again a few times first
+        # (_post); other API errors and a reply cut off at max_tokens stop the run at once.
         try:
-            response = requests.post(
-                f"{self.base_url}/v1/messages",
-                headers=headers,
-                json=data,
-                timeout=REQUEST_TIMEOUT
-            )
+            response = self._post(headers, data)
             if tools and response.status_code in (400, 422):
                 # Some Anthropic-compatible gateways don't take "tools": ask again without them.
                 # The text format (thought:/action:/done:) still works there
                 data.pop("tools")
-                retry = requests.post(
-                    f"{self.base_url}/v1/messages",
-                    headers=headers,
-                    json=data,
-                    timeout=REQUEST_TIMEOUT
-                )
+                retry = self._post(headers, data)
                 # Only a request that works without tools shows that they were the problem. A wrong
                 # MODEL_ID is a 400 either way; it used to turn tool use off for the whole session
                 if retry.status_code == 200:
@@ -172,6 +180,26 @@ class LLMClient:
 
         return {"action": None, "error": f"Failed to parse: {json_content[:200]}", "raw": json_content}
     
+    def _post(self, headers: dict, data: dict):
+        """POST to the Messages API. A rate limit, a server error or a dropped connection is tried
+        again after RETRY_DELAYS; the last answer (or the last ConnectionError) is what remains.
+        A read timeout is not tried again: the request has already waited minutes for the reply."""
+        url = f"{self.base_url}/v1/messages"
+        for attempt, delay in enumerate((*RETRY_DELAYS, None), 1):
+            try:
+                response = requests.post(url, headers=headers, json=data, timeout=REQUEST_TIMEOUT)
+            except requests.ConnectionError as e:
+                if delay is None:
+                    raise
+                why = f"could not reach the API ({type(e).__name__})"
+            else:
+                if response.status_code not in RETRY_STATUSES or delay is None:
+                    return response
+                why = f"the API answered {response.status_code}"
+                delay = _retry_after(response, delay)
+            print(f"Note: {why}; trying again in {delay:g}s ({attempt} of {len(RETRY_DELAYS)}).")
+            time.sleep(delay)
+
     def _tool_call_reply(self, text: str, call: dict) -> dict:
         """A reply that called a tool through tool use. The text next to the call is the thought.
         One tool runs per step, so a second call in the same reply is left for the next step."""

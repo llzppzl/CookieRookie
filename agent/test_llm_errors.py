@@ -1,6 +1,8 @@
-"""agent/test_llm_errors.py - API errors and cut-off replies stop the run instead of being retried"""
+"""agent/test_llm_errors.py - API errors and cut-off replies stop the run instead of being retried
+(rate limits, server errors and dropped connections are tried again a few times first)"""
 import types
 
+import pytest
 import requests
 
 import main
@@ -9,6 +11,14 @@ from agent.tool_system import tool_system
 import agent.tools as tools_module
 
 tools_module.register_base_tools()
+
+
+@pytest.fixture(autouse=True)
+def waits(monkeypatch):
+    """The seconds main.py waits before trying again, recorded instead of slept"""
+    slept = []
+    monkeypatch.setattr(main, "time", types.SimpleNamespace(sleep=slept.append))
+    return slept
 
 
 def fake_api(monkeypatch, *responses):
@@ -32,8 +42,8 @@ def reply(text, stop_reason="end_turn"):
     return types.SimpleNamespace(status_code=200, json=lambda: body, text=text)
 
 
-def error(status, text):
-    return types.SimpleNamespace(status_code=status, text=text, json=lambda: {})
+def error(status, text, headers=None):
+    return types.SimpleNamespace(status_code=status, text=text, json=lambda: {}, headers=headers or {})
 
 
 def client():
@@ -55,17 +65,58 @@ def test_api_error_stops_interactive_run_after_one_call(monkeypatch):
     assert len(sent) == 1
 
 
-def test_api_error_stops_debug_run(monkeypatch):
-    fake_api(monkeypatch, error(429, "quota exceeded"))
+def test_api_error_stops_debug_run(monkeypatch, waits):
+    sent = fake_api(monkeypatch, error(429, "quota exceeded"))
     result = DebugAgent(client()).run("bug")
     assert result == "LLM error: API error: 429 - quota exceeded"
+    # Tried again after each of the waits, then reported
+    assert len(sent) == len(main.RETRY_DELAYS) + 1
+    assert waits == list(main.RETRY_DELAYS)
 
 
-def test_network_error_is_reported(monkeypatch):
-    fake_api(monkeypatch, requests.ConnectionError("no route to host"))
+def test_network_error_is_reported(monkeypatch, waits):
+    sent = fake_api(monkeypatch, requests.ConnectionError("no route to host"))
     response = client().chat(debug_context())
     assert response["fatal"]
     assert response["error"].startswith("Could not reach https://api.minimax.io/anthropic")
+    assert len(sent) == len(main.RETRY_DELAYS) + 1
+
+
+@pytest.mark.parametrize("status", [429, 500, 502, 503, 529])
+def test_a_busy_or_failing_server_is_tried_again(monkeypatch, waits, status):
+    # Before: one 529 "overloaded" or 429 rate limit ended the whole task
+    sent = fake_api(monkeypatch, error(status, "overloaded"),
+                    reply("thought: done\naction:\ndone: true\nsummary: fixed"))
+    assert DebugAgent(client()).run("bug") == "fixed"
+    assert len(sent) == 2
+    assert waits == [main.RETRY_DELAYS[0]]
+
+
+def test_a_dropped_connection_is_tried_again(monkeypatch, waits):
+    sent = fake_api(monkeypatch, requests.ConnectionError("connection reset"),
+                    reply("thought: done\naction:\ndone: true\nsummary: ok"))
+    assert client().chat(debug_context())["summary"] == "ok"
+    assert len(sent) == 2
+
+
+def test_retry_after_is_followed_up_to_a_limit(monkeypatch, waits):
+    fake_api(monkeypatch, error(429, "slow down", {"retry-after": "7"}),
+             error(429, "slow down", {"retry-after": "3600"}),
+             error(429, "slow down", {"retry-after": "soon"}),
+             reply("thought: done\naction:\ndone: true\nsummary: ok"))
+    assert client().chat(debug_context())["summary"] == "ok"
+    assert waits == [7, main.MAX_RETRY_WAIT, main.RETRY_DELAYS[2]]
+
+
+def test_other_errors_and_timeouts_are_not_tried_again(monkeypatch, waits):
+    sent = fake_api(monkeypatch, error(400, "unknown model"))
+    assert client().chat(debug_context())["fatal"]
+    assert len(sent) == 1
+
+    sent = fake_api(monkeypatch, requests.ReadTimeout("read timed out"))
+    assert client().chat(debug_context())["fatal"]
+    assert len(sent) == 1
+    assert waits == []
 
 
 def test_cut_off_reply_is_not_run(monkeypatch):
