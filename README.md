@@ -55,7 +55,7 @@ python main.py --interactive
 python main.py "Your bug description here"
 ```
 
-Before each file edit or shell command, the agent shows what it will do and asks:
+Before each file edit, shell command or read outside the project folder, the agent shows what it will do and asks:
 `y` runs it, Enter or `n` skips it, `a` allows the rest of the run, `q` stops.
 Anything else you type skips the step and is passed to the agent as feedback.
 Pass `--yes` to run everything without asking.
@@ -113,7 +113,7 @@ CookieRookie offers its tools through the API's tool use, so the model's tool ca
 4. You confirm or modify
 5. Agent executes step by step
    - Safe steps run automatically
-   - Dangerous steps (edit, exec, test_run) pause for confirmation
+   - Dangerous steps (edit, exec, test_run, reading outside the project) pause for confirmation
 ```
 
 ### Available Tools

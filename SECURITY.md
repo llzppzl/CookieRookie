@@ -6,13 +6,13 @@ CookieRookie lets a language model read your files, change them and run commands
 
 | Tool | What it does | Asks first? |
 |------|--------------|-------------|
-| `read_file`, `search_files`, `find_files` | Read files and folder listings | No |
+| `read_file`, `search_files`, `find_files` | Read files and folder listings | Only outside the project folder |
 | `edit_file`, `write_file` | Change or create files, inside the project folder only | Yes |
 | `exec` | Run any shell command (`shell=True`, 30 s timeout by default) | Yes |
 | `git_status`, `git_diff`, `git_log`, `git_branch` | Show the project's git state | No |
 | `git_commit`, `git_checkout` | Commit, switch branches | Yes (interactive mode) |
 | `test_run` | Run the project's tests (pytest, unittest, jest or go test) | Yes (interactive mode) |
-| `test_generate` | Read a source file and suggest where its tests go (changes nothing) | No |
+| `test_generate` | Read a source file and suggest where its tests go (changes nothing) | Only outside the project folder |
 
 Things to know:
 
@@ -20,7 +20,7 @@ Things to know:
 - **Debug mode** (`python main.py "bug"`) shows each edit and command and asks before running it. `--yes` turns the questions off: use it only on code you can restore (a clean git checkout) or in a container.
 - **Running tests runs code.** Tests execute whatever the project's test files, `conftest.py` or `package.json` contain, so `test_run` shows the exact test command and waits for `/confirm` like `exec`. Confirming it still runs that code: don't point CookieRookie at code you don't trust.
 - Interactive mode writes `.agent-memory.json` (the project's layout and commands) into the folder it was started in, without asking.
-- `edit_file` and `write_file` refuse paths outside the folder CookieRookie was started in. Reading is not limited: the model can read any file your user account can access, and what it reads is sent to the API (below). `exec` runs with your user's rights, so a command can still touch anything; that's why it asks.
+- `edit_file` and `write_file` refuse paths outside the folder CookieRookie was started in. The read tools run without asking inside that folder, and ask first for a path outside it (the preview says so), because what they read is sent to the API (below): this stops a confused model, or instructions planted in a file, from quietly sending `~/.ssh` or `~/.aws` files. A symlink counts as where it points. `exec` runs with your user's rights, so a command can still touch anything; that's why it asks.
 
 ## What leaves your machine
 

@@ -70,7 +70,12 @@ def preview_action(tool_name: str, args: dict) -> str:
         from .test_tools import describe_test_run
         known = {k: args[k] for k in ("path", "pattern", "framework") if k in args}
         return describe_test_run(**known)
-    return f"{tool_name}(" + ", ".join(f"{k}={v!r}" for k, v in args.items()) + ")"
+    call = f"{tool_name}(" + ", ".join(f"{k}={v!r}" for k, v in args.items()) + ")"
+    if tool_name in ("read_file", "search_files", "find_files", "test_generate"):
+        # These ask only for a path outside the project; what they read is sent to the API
+        return (f"Read outside the project folder ({os.getcwd()}); what it reads is sent to the API:\n"
+                f"  {call}")
+    return call
 
 
 def ask_in_terminal(tool_name: str, args: dict):
@@ -276,9 +281,9 @@ class DebugAgent:
                 })
                 continue
             
-            # Edits and commands run only if the user says yes
+            # Edits, commands and reads outside the project run only if the user says yes
             answer, reason = "yes", ""
-            if tool_system.is_confirmable(tool_name):
+            if tool_system.needs_confirmation(tool_name, tool_args):
                 answer, reason = self.ask(tool_name, tool_args)
                 if answer == "quit":
                     return f"Stopped before {tool_name}" + (f": {reason}." if reason else " (it did not run).")
@@ -782,7 +787,11 @@ steps:
 
             tool_def = tools[tool_name]
 
-            if tool_def.confirmable:
+            # A tool system without needs_confirmation() asks for the confirmable tools only
+            needs_confirmation = getattr(self.tool_system, "needs_confirmation", None)
+            asks = (needs_confirmation(tool_name, tool_args) if callable(needs_confirmation)
+                    else tool_def.confirmable)
+            if asks:
                 self.pending_action = {
                     "thought": reasoning,
                     "action": action,

@@ -50,6 +50,17 @@ def inside_project_only(tool: Callable) -> Callable:
     return guarded
 
 
+def reads_outside_project(arg: str, default: str = ".") -> Callable[[dict], bool]:
+    """asks_when for a tool that reads the file or folder in argument arg: True when that is
+    outside the project. Reading runs without asking, but what is read is sent to the API, so a
+    confused model (or instructions planted in a file it reads) could send ~/.ssh/id_rsa or
+    ~/.aws/credentials there without the user ever seeing it."""
+    def outside(args: dict) -> bool:
+        path = args.get(arg)
+        return not is_inside_project(str(default if path is None else path))
+    return outside
+
+
 # ========== Tool implementations ==========
 
 def read_file(path: str, offset: int = 1, limit: int = 100) -> dict:
@@ -330,9 +341,13 @@ def find_files(pattern: str, path: str = ".", use_regex: bool = False) -> dict:
 
 def register_base_tools() -> None:
     """Register the base tools in ToolSystem"""
-    # The descriptions go to the model with each tool (in the prompt and in the API's tool list)
+    # The descriptions go to the model with each tool (in the prompt and in the API's tool list).
+    # The tools that read run without asking inside the project, and ask first outside it
+    outside_note = "; asks the user first for a path outside the project folder"
     tool_system.register("read_file", read_file, confirmable=False,
-                        description="Read lines of a file (offset: first line, from 1; limit: how many lines)")
+                        description="Read lines of a file (offset: first line, from 1; limit: how many lines)"
+                                    + outside_note,
+                        asks_when=reads_outside_project("path"))
     tool_system.register("edit_file", edit_file, confirmable=True,
                         description="Change a file: replace line number line with new_string (preferred), "
                                     "or replace old_string, which must appear exactly once, with new_string")
@@ -343,10 +358,12 @@ def register_base_tools() -> None:
                                     "it is stopped after timeout seconds")
     tool_system.register("search_files", search_files, confirmable=False,
                         description="Search the contents of files matching file_glob under path for pattern "
-                                    "(plain text, or a regex with use_regex=True)")
+                                    "(plain text, or a regex with use_regex=True)" + outside_note,
+                        asks_when=reads_outside_project("path"))
     tool_system.register("find_files", find_files, confirmable=False,
                         description="Find files under path whose name matches pattern "
-                                    "(a glob like *.py, or a regex with use_regex=True)")
+                                    "(a glob like *.py, or a regex with use_regex=True)" + outside_note,
+                        asks_when=reads_outside_project("path"))
 
     # Test tools
     tt = _get_test_tools()
@@ -355,7 +372,8 @@ def register_base_tools() -> None:
     tool_system.register("test_run", tt.test_run, confirmable=True,
                         description="Run tests (path=project directory, pattern=test file, directory or glob; default: every test the framework finds, framework=auto/pytest/unittest/jest/go)")
     tool_system.register("test_generate", tt.test_generate, confirmable=False,
-                        description="Read a source file to prepare writing tests for it")
+                        description="Read a source file to prepare writing tests for it" + outside_note,
+                        asks_when=reads_outside_project("source", default=""))
 
 
 def register_tools() -> Dict[str, Callable]:

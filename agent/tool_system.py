@@ -114,6 +114,8 @@ class ToolDef:
     confirmable: bool = False
     description: str = ""
     args_schema: Optional[Dict[str, Any]] = None
+    # For a tool that runs without asking: asks_when(args) is True for the calls that ask anyway
+    asks_when: Optional[Callable[[dict], bool]] = None
 
 
 class ToolSystem:
@@ -128,7 +130,8 @@ class ToolSystem:
         fn: Callable,
         confirmable: bool = False,
         description: str = "",
-        args_schema: Optional[Dict[str, Any]] = None
+        args_schema: Optional[Dict[str, Any]] = None,
+        asks_when: Optional[Callable[[dict], bool]] = None
     ) -> None:
         """Register a tool"""
         self._tools[name] = ToolDef(
@@ -136,7 +139,8 @@ class ToolSystem:
             fn=checked(name, fn),
             confirmable=confirmable,
             description=description,
-            args_schema=args_schema
+            args_schema=args_schema,
+            asks_when=asks_when
         )
 
     def get(self, name: str) -> Optional[ToolDef]:
@@ -151,6 +155,19 @@ class ToolSystem:
         """Whether the tool needs the user's confirmation"""
         tool = self._tools.get(name)
         return tool.confirmable if tool else False
+
+    def needs_confirmation(self, name: str, args: Optional[dict] = None) -> bool:
+        """Whether this call needs the user's confirmation: always for a confirmable tool, and for
+        another tool when its asks_when says so (read_file on a file outside the project)"""
+        tool = self._tools.get(name)
+        if tool is None:
+            return False
+        if tool.confirmable:
+            return True
+        try:
+            return bool(tool.asks_when and tool.asks_when(args or {}))
+        except Exception:  # arguments of the wrong type: the tool itself will report them
+            return False
 
     def api_tools(self, names=None) -> List[Dict[str, Any]]:
         """The tools (all, or only those in names) as tool definitions for the Messages API"""
