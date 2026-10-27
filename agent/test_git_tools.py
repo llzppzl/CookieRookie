@@ -122,6 +122,26 @@ def test_a_path_or_branch_is_not_read_as_an_option(repo):
     assert git_checkout("--detach")["success"] is False
 
 
+def test_the_question_before_a_commit_lists_the_files_it_takes(repo):
+    from agent.core import preview_action
+    (repo / "app.py").write_text("x = 1\n")
+    git_commit("Add app.py")
+    (repo / "app.py").write_text("x = 2\n")
+    (repo / "secrets").mkdir()
+    (repo / "secrets" / ".env").write_text("KEY=1\n")
+
+    # Before: only "git_commit(message='Fix x')", though "git add ." takes secrets/.env too
+    preview = preview_action("git_commit", {"message": "Fix x"})
+    assert "Fix x" in preview
+    assert "app.py" in preview
+    assert "secrets/.env" in preview
+    assert "new file" in preview
+
+    only = preview_action("git_commit", {"message": "Fix x", "files": ["app.py"]})
+    assert "app.py" in only
+    assert ".env" not in only
+
+
 def test_git_tools_are_offered_and_commits_ask_first():
     register_git_tools()
 

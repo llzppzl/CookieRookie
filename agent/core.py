@@ -70,6 +70,9 @@ def preview_action(tool_name: str, args: dict) -> str:
         from .test_tools import describe_test_run
         known = {k: args[k] for k in ("path", "pattern", "framework") if k in args}
         return describe_test_run(**known)
+    if tool_name == "git_commit":
+        from .git_tools import describe_commit
+        return describe_commit(str(args.get("message", "")), args.get("files"))
     call = f"{tool_name}(" + ", ".join(f"{k}={v!r}" for k, v in args.items()) + ")"
     if tool_name in ("read_file", "search_files", "find_files", "test_generate"):
         # These ask only for a path outside the project; what they read is sent to the API

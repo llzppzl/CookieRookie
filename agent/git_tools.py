@@ -135,6 +135,28 @@ def git_commit(message: str, files: Optional[List[str]] = None) -> Dict[str, Any
         }
 
 
+def describe_commit(message: str = "", files: Optional[List[str]] = None) -> str:
+    """What git_commit will commit, for the question before it runs. Without files it runs
+    "git add .", which also takes new files the user may never have meant to commit (.env, a
+    secrets file not in .gitignore); the question used to show only the message."""
+    if isinstance(files, str):
+        files = [files]
+    files = [str(f) for f in files] if isinstance(files, (list, tuple)) else None
+    status = _git("status", "--porcelain", "--untracked-files=all", "--", *files) if files \
+        else _git("status", "--porcelain", "--untracked-files=all")
+    if status.returncode != 0:
+        listing = f"  (git status failed: {_error(status)})"
+    else:
+        lines = [line for line in status.stdout.splitlines() if line]
+        listing = "\n".join(f"  {line}" for line in lines[:30]) or "  (no changes)"
+        if len(lines) > 30:
+            listing += f"\n  ... {len(lines) - 30} more"
+        if any(line.startswith("??") for line in lines):
+            listing += "\n  (?? = a new file git does not track yet; it will be added)"
+    which = "these files" if files else "every change in the project (git add .)"
+    return f"Commit {which} with the message {message!r}:\n{listing}"
+
+
 def git_branch(list_branches: bool = False) -> Dict[str, Any]:
     """Branch operations.
 

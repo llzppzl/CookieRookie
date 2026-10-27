@@ -10,7 +10,7 @@ CookieRookie lets a language model read your files, change them and run commands
 | `edit_file`, `write_file` | Change or create files, inside the project folder only | Yes |
 | `exec` | Run any shell command (`shell=True`, 30 s timeout by default) | Yes |
 | `git_status`, `git_diff`, `git_log`, `git_branch` | Show the project's git state | No |
-| `git_commit`, `git_checkout` | Commit, switch branches | Yes (interactive mode) |
+| `git_commit`, `git_checkout` | Commit, switch branches. Without `files`, `git_commit` runs `git add .`, which also adds new files; the question lists every file it will commit | Yes (interactive mode) |
 | `test_run` | Run the project's tests (pytest, unittest, jest or go test) | Yes (interactive mode) |
 | `test_generate` | Read a source file and suggest where its tests go (changes nothing) | Only outside the project folder |
 
