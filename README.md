@@ -97,6 +97,7 @@ CookieRookie offers its tools through the API's tool use, so the model's tool ca
 | `/reject [why]` | Don't run the pending action. With a reason, the agent goes on with the task and tries something else; without one, the task stops |
 | `/edit key=value` | Change some arguments of the pending action, then run it (e.g. `/edit line=19`, `/edit command="pytest -x"`) |
 | `/status` | Show pending action status |
+| `y` / `n` | While an action is waiting: the same as `/confirm` and `/reject`. Anything else you type then is not a new task: the action is skipped and the agent reads what you typed as the reason |
 | `/plan <task>` | Ask for a step-by-step plan first; nothing runs yet |
 | `/plan` | Show the current plan |
 | `/skip N` | Leave out step N of the plan |

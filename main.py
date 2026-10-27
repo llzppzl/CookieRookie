@@ -796,6 +796,8 @@ While an edit or command is waiting:
   /reject [why]     Don't run it (with a reason, the agent tries something else)
   /edit key=value   Change its arguments, then run it
   /status           Show what is waiting
+  y / n             The same as /confirm and /reject
+  anything else     Don't run it; the agent reads what you typed and goes on
 
 Plans:
   /plan <task>      Ask for a step-by-step plan first; nothing runs yet
@@ -811,6 +813,22 @@ Examples:
   > Write a calculator module
   > /plan Add tests for src/calculator.py
 """)
+                continue
+
+            if agent.pending_action:
+                # Text typed while an edit or command waits answers it, like in debug mode. Before,
+                # it started a new task and left the old action waiting, so a later /confirm ran
+                # an edit from a task the user had moved on from
+                word = user_input.lower()
+                if word in ("y", "yes"):
+                    result = agent.confirm()
+                elif word in ("n", "no"):
+                    result = agent.reject()
+                else:
+                    print("(Not run: what you typed goes to the agent as the reason.)")
+                    result = agent.reject(user_input)
+                if result != "awaiting_confirmation":
+                    print(f"\n{result}\n")
                 continue
 
             # A normal task
