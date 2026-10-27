@@ -59,6 +59,7 @@ Before each file edit, shell command or read outside the project folder, the age
 `y` runs it, Enter or `n` skips it, `a` allows the rest of the run, `q` stops.
 Anything else you type skips the step and is passed to the agent as feedback.
 Pass `--yes` to run everything without asking.
+The command exits with code 0 when the agent reports the bug fixed, and 1 when it stops without fixing it (an API error, `q`, no API key, or the step limit), so scripts can check the result.
 
 ## Configuration
 

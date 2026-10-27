@@ -226,11 +226,15 @@ class DebugAgent:
         self.tools = register_tools()
         self.max_iterations = max_iterations
         self.ask = ask or ask_in_terminal
+        # True once the model said the bug is fixed; any other end (an API error, the user
+        # quitting, max iterations) leaves it False, and the command exits with code 1
+        self.fixed = False
 
     def run(self, bug_report: str) -> str:
         """Run the agent"""
         context = self._build_initial_context(bug_report)
         replies_without_action = 0
+        self.fixed = False
 
         for i in range(self.max_iterations):
             print(f"\n=== Iteration {i + 1} ===")
@@ -250,6 +254,7 @@ class DebugAgent:
             print(f"Thought: {reasoning}")
             
             if done:
+                self.fixed = True
                 return summary or "Bug fixed!"
 
             # API errors (wrong key, no quota) and cut-off replies won't get better by retrying

@@ -630,7 +630,9 @@ def load_config():
     return config
 
 
-def main():
+def main() -> int:
+    """Debug mode. Returns the exit code: 0 when the agent fixed the bug, 1 when it could not
+    start or stopped without fixing it, so scripts and CI can tell the two apart."""
     # Bug description; --yes / -y runs edits and commands without asking
     args = sys.argv[1:]
     approve = any(a in ("--yes", "-y") for a in args)
@@ -641,14 +643,14 @@ def main():
         print(f"Usage: {PROG} [--yes] \"Your bug description\"")
         print("Or set DEBUG_BUG_REPORT environment variable")
         print("--yes, -y: run edits and commands without asking")
-        return
-    
+        return 0
+
     # Load the settings
     config = load_config()
-    
+
     if not config["api_key"]:
         print_missing_key()
-        return
+        return 1
     
     print(f"Config: model={config['model']}, base_url={config['base_url']}")
     
@@ -666,15 +668,16 @@ def main():
     
     result = agent.run(bug_report)
     print(f"\n=== Final Result ===\n{result}")
+    return 0 if agent.fixed else 1
 
 
-def interactive_main():
-    """Interactive mode entry point"""
+def interactive_main() -> int:
+    """Interactive mode entry point. Returns the exit code."""
     config = load_config()
 
     if not config["api_key"]:
         print_missing_key()
-        return
+        return 1
 
     print(f"CookieRookie Coding Agent ({config['model']})")
     print("Type 'exit' to quit, 'help' for commands\n")
@@ -866,15 +869,14 @@ def cli(argv) -> int:
         print(USAGE)
         return 0
     if first == "--interactive":
-        interactive_main()
-        return 0
+        return interactive_main() or 0
     # An option-like word (no spaces) that isn't an option: a typo such as --interactiv used to be
     # taken as the bug report and sent to the model
     if first.startswith("-") and " " not in first and first not in DEBUG_MODE_OPTIONS:
         print(f"Unknown option: {first}\n\n{USAGE}")
         return 2
-    main()
-    return 0
+    # Before, every run exited with 0, even without an API key or when the bug was not fixed
+    return main() or 0
 
 
 if __name__ == "__main__":
