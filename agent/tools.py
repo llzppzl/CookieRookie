@@ -82,6 +82,12 @@ def read_file(path: str, offset: int = 1, limit: int = 100) -> dict:
         total_lines = len(lines)
         end = min(offset + limit - 1, total_lines)
 
+        # An empty file (an __init__.py, a new module) used to fail with "Offset 1 beyond file
+        # length 0", and the model went on as if the file could not be read
+        if total_lines == 0 and offset == 1:
+            return {"success": True, "content": "", "lines": "0-0", "total": 0,
+                    "message": "The file is empty"}
+
         if offset > total_lines:
             return {"success": False, "error": f"Offset {offset} beyond file length {total_lines}"}
         

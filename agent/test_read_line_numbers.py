@@ -28,6 +28,19 @@ def test_empty_file_shows_no_numbers():
     assert "not part of the file" not in text
 
 
+def test_reading_an_empty_file_works_and_says_it_is_empty(tmp_path, monkeypatch):
+    # It used to fail with "Offset 1 beyond file length 0"
+    from agent.tools import read_file
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "__init__.py").write_text("")
+    result = read_file("__init__.py")
+    assert result["success"] is True
+    assert result["content"] == "" and result["total"] == 0
+    assert "the file is empty" in history_text(result, {"path": "__init__.py"})
+    # Past the end of an empty file is still an error
+    assert read_file("__init__.py", offset=2)["success"] is False
+
+
 def test_line_numbers_match_what_edit_file_changes(tmp_path, monkeypatch):
     # The number shown next to a line is the line=N that edit_file replaces
     from agent.tools import read_file, edit_file

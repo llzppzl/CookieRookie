@@ -401,7 +401,8 @@ class LLMClient:
                     total = result.get("total", "?")
                     content = result.get("content", "")
 
-                    parts.append(f" Result: read lines {lines} (of {total}).")
+                    parts.append(" Result: the file is empty." if total == 0
+                                 else f" Result: read lines {lines} (of {total}).")
 
                     # Cut long files, but say so
                     max_chars = 2000
